@@ -18,12 +18,11 @@ opt-level = 3
 panic = "abort"
 
 [dependencies]
-mimalloc = { version = "0.1" }
-eyre = { version = "0.6" }
-color-eyre = { version = "0.6" }
-clap = { version = "4", features = ["derive"] }
+mimalloc = { version = "*" }
+eyre = { version = "*" }
+color-eyre = { version = "*" }
+clap = { version = "*", features = ["derive"] }
 tokio = { version = "*", features = ["full"] }
-
 axum = { version = "*" }
 axum-server = { version = "*", features = ["tls-rustls"] }
 axum-extra = { version = "*", features = ["typed-header"] }
@@ -35,9 +34,10 @@ k8s-openapi = { version = "*", default-features = false, features = [
 ] }
 kube = { version = "*", features = ["admission"] }
 jsonpath-rust = { version = "*" }
+boolean_expression = { version = "*" }
 # gateway-api = { version = "0.19" }
 # serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1" }
+serde_json = { version = "*" }
 # serde_yaml = { version = "0.9.33" }
 # json-patch = { version = "4" }
 # tracing = { version = "0.1" }

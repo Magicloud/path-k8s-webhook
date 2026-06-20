@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{
+    ArgAction::Append,
     builder::{StringValueParser, TypedValueParser},
     *,
 };
@@ -25,11 +26,14 @@ pub struct WebhookArguments {
     /// Giving how JSON path works, the result could be some values, or nothing.
     /// If it intends to return values, `-v` and `-a` could be used to check the values.
     /// Or, do not pass `-v` and `-a` just to check if there are values (existence).
-    #[arg(short, long, value_parser = StringValueParser::new().try_map(|s| parse_json_path(&s)))]
-    pub json_path: JpQuery,
-    #[arg(short, long)]
-    pub value: Option<String>,
-    #[arg(short, long, default_value = "true", requires = "value")]
+    #[arg(short('j'), long, required = true, action = Append, value_parser = StringValueParser::new().try_map(|s| parse_json_path(&s)))]
+    pub json_path: Vec<JpQuery>,
+    #[arg(short('v'), long, action = Append)]
+    pub jp_value: Vec<String>,
+    #[arg(short('a'), long, action = Append)]
+    pub jp_all_must_match: Vec<bool>,
+
+    #[arg(short('A'), long, default_value = "false")]
     pub all_must_match: bool,
     /// Webhook service TLS certificate file path
     #[arg(short('c'), long)]
@@ -37,4 +41,28 @@ pub struct WebhookArguments {
     /// Webhook service TLS private key file path
     #[arg(short('k'), long)]
     pub tls_private_key_file_name: PathBuf,
+    #[arg(short, long)]
+    pub name: String,
+}
+
+#[derive(Debug)]
+pub enum TypeHelper<'a> {
+    JpQuery(&'a JpQuery),
+    String(&'a String),
+    Bool(&'a bool),
+}
+impl<'a> From<&'a JpQuery> for TypeHelper<'a> {
+    fn from(value: &'a JpQuery) -> Self {
+        Self::JpQuery(value)
+    }
+}
+impl<'a> From<&'a String> for TypeHelper<'a> {
+    fn from(value: &'a String) -> Self {
+        Self::String(value)
+    }
+}
+impl<'a> From<&'a bool> for TypeHelper<'a> {
+    fn from(value: &'a bool) -> Self {
+        Self::Bool(value)
+    }
 }

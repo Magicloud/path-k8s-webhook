@@ -13,9 +13,11 @@
 mod cli;
 mod webhook;
 
-use clap::Parser;
-use eyre::Result;
+use clap::CommandFactory;
+use eyre::{Result, eyre};
 use mimalloc::MiMalloc;
+
+use crate::{cli::Cli, webhook::Webhook};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -43,8 +45,16 @@ async fn main() -> Result<()> {
     // };
     color_eyre::install()?;
 
-    let cli = cli::Cli::parse();
-    cli.start().await?;
+    let root_matches = Cli::command().get_matches();
+
+    match root_matches.subcommand() {
+        Some(("webhook", args)) => {
+            let webhook = Webhook::try_from(args)?;
+            drop(root_matches);
+            webhook.start().await?;
+        }
+        _ => unimplemented!(),
+    }
 
     Ok(())
 }

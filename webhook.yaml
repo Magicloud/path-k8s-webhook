@@ -54,7 +54,7 @@ spec:
       # automountServiceAccountToken: true
       containers:
       - name: path-k8s-webhook
-        image: registry.magicloud.lan/pkw:latest@sha256:a3c3a46689aa95e264d61273d0ec0fb87620f0c206a3990e5856d36c376a2a94
+        image: pkw
         args:
           - webhook
           - -c
@@ -63,12 +63,24 @@ spec:
           - /tls/tls.key
           - -j
           - "$.spec.tls[0]"
+          - -j
+          - "$.metadata.namespace"
+          - -v
+          - test
+          - -A
+          - -n
+          - ingress-tls
         ports:
         - containerPort: 443
           name: https
         volumeMounts:
         - name: tls
           mountPath: /tls
+        resources:
+          requests:
+            memory: "1Gi"
+          limits:
+            memory: "2Gi"
         env:
         - name: RUST_LOG
           value: DEBUG

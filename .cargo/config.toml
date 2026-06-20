@@ -9,3 +9,13 @@ rustflags = ["-C", "link-arg=--ld-path=wild"]
 
 [env]
 # K8S_OPENAPI_ENABLED_VERSION = { value = "1.31", force = true }
+
+[source.crates-io]
+replace-with = "local-proxy"
+
+[source.local-proxy]
+registry = "sparse+http://cc.magicloud.lan/index/"
+
+[http]
+timeout = 300
+low-speed-limit = 0
