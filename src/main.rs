@@ -28,21 +28,6 @@ async fn main() -> Result<()> {
         .install_default()
         .expect("Cannot initialize AWS LC");
 
-    // let log_provider = match opentelemetry_otlp::LogExporter::builder()
-    //     .with_tonic()
-    //     .build()
-    // {
-    //     Ok(log_exporter) => SdkLoggerProvider::builder()
-    //         .with_resource(Resource::builder().with_service_name("ingress-tls").build())
-    //         .with_batch_exporter(log_exporter)
-    //         .build(),
-    //     Err(e) => {
-    //         eprintln!("Cannot initialize OTLP log exporter: {e:?}");
-    //         SdkLoggerProvider::builder()
-    //             .with_batch_exporter(opentelemetry_stdout::LogExporter::default())
-    //             .build()
-    //     }
-    // };
     color_eyre::install()?;
 
     let root_matches = Cli::command().get_matches();

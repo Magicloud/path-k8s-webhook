@@ -54,7 +54,7 @@ spec:
       # automountServiceAccountToken: true
       containers:
       - name: path-k8s-webhook
-        image: pkw
+        image: registry.magicloud.lan/pkw:latest
         args:
           - webhook
           - -c
@@ -67,9 +67,10 @@ spec:
           - "$.metadata.namespace"
           - -v
           - test
-          - -A
+          - -a
           - -n
           - ingress-tls
+          - -A
         ports:
         - containerPort: 443
           name: https

@@ -289,16 +289,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "boolean_expression"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52a13b46d1f5df9cd15e0215e96839bda5eb21a8718ca7e8c9e3ee168cb7e7c0"
-dependencies = [
- "itertools",
- "smallvec",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -552,6 +542,12 @@ dependencies = [
  "libc",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "evalexpr"
+version = "13.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25929004897f2bbab309121a60400d36992f6d911d09baa6c172f6cc55706601"
 
 [[package]]
 name = "eyre"
@@ -910,15 +906,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
-name = "itertools"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "284f18f85651fe11e8a991b2adb42cb078325c996ed026d994719efcfca1d54b"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1245,14 +1232,14 @@ dependencies = [
 
 [[package]]
 name = "path-k8s-webhook"
-version = "2026.6.6"
+version = "2026.7.6"
 dependencies = [
  "axum",
  "axum-extra",
  "axum-server",
- "boolean_expression",
  "clap",
  "color-eyre",
+ "evalexpr",
  "eyre",
  "jsonpath-rust",
  "k8s-openapi",

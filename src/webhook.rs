@@ -11,6 +11,9 @@ use axum::{
 use axum_extra::headers::{ContentType, HeaderMapExt};
 use axum_server::tls_rustls::RustlsConfig;
 use clap::{ArgMatches, FromArgMatches, parser::ValuesRef};
+use evalexpr::{
+    ContextWithMutableVariables, DefaultNumericTypes, HashMapContext, Node, build_operator_tree,
+};
 use eyre::{Result, eyre};
 use jsonpath_rust::{
     parser::model::JpQuery,
@@ -36,9 +39,16 @@ pub struct MatchValue {
     pub all_must_match: bool,
 }
 
+#[derive(Debug)]
+pub enum MatchCombiner {
+    Any,
+    All,
+    BooleanExpression(Node),
+}
+
 pub struct Webhook {
     pub matches: Vec<Match>,
-    pub all_must_match: bool,
+    pub combiner: MatchCombiner,
     pub tls_certificate_file_name: PathBuf,
     pub tls_private_key_file_name: PathBuf,
     pub name: String,
@@ -129,7 +139,16 @@ impl TryFrom<&ArgMatches> for Webhook {
 
         Ok(Webhook {
             matches,
-            all_must_match: struct_args.all_must_match,
+            combiner: match struct_args.match_combiner {
+                None => MatchCombiner::Any,
+                Some(str) => {
+                    if str == "ALL" {
+                        MatchCombiner::All
+                    } else {
+                        MatchCombiner::BooleanExpression(build_operator_tree(&str)?)
+                    }
+                }
+            },
             tls_certificate_file_name: struct_args.tls_certificate_file_name,
             tls_private_key_file_name: struct_args.tls_private_key_file_name,
             name: struct_args.name,
@@ -155,24 +174,54 @@ async fn validate(
             .ok_or(eyre!("Cannot get `object` object"))?;
 
         // TODO: logs failures
-        let mut results = data.matches.iter().map(|m| {
-            let results = js_path_process(&m.json_path, obj)?;
-            let result = if let Some(ref tv) = m.value {
-                let check = |v: QueryRef<Value>| *v.val() == *tv.value;
-                if tv.all_must_match {
-                    results.into_iter().all(check)
+        let results = data
+            .matches
+            .iter()
+            .map(|m| {
+                let results = js_path_process(&m.json_path, obj)?;
+                let result = if let Some(ref tv) = m.value {
+                    let check = |v: QueryRef<Value>| {
+                        eprint!(
+                            "path({}) value({}) equals target value({})? ",
+                            m.json_path,
+                            v.clone().val(),
+                            tv.value
+                        );
+                        let r = *v.val() == *tv.value;
+                        eprintln!("{r}");
+                        r
+                    };
+                    if tv.all_must_match {
+                        results.into_iter().all(check)
+                    } else {
+                        results.into_iter().any(check)
+                    }
                 } else {
-                    results.into_iter().any(check)
+                    if !results.is_empty() {
+                        eprintln!("path ({}) matched", m.json_path);
+                        true
+                    } else {
+                        eprintln!("path ({}) not matched", m.json_path);
+                        false
+                    }
+                };
+                Ok(result)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut results = results.iter();
+
+        eprintln!("{:?}", data.combiner);
+        let result = match &data.combiner {
+            MatchCombiner::Any => results.any(|r| *r),
+            MatchCombiner::All => results.all(|r| *r),
+            MatchCombiner::BooleanExpression(node) => {
+                let mut context = HashMapContext::<DefaultNumericTypes>::new();
+                for (i, r) in results.enumerate() {
+                    let i = i + 1; // Sugar. So cli argument starts from 1.
+                    context.set_value(format!("v{i}"), evalexpr::Value::from(*r))?;
                 }
-            } else {
-                !results.is_empty()
-            };
-            Ok(result)
-        });
-        let result = if data.all_must_match {
-            results.all(|r: Result<bool>| matches!(r, Ok(true)))
-        } else {
-            results.any(|r| matches!(r, Ok(true)))
+                node.eval_boolean_with_context(&context)?
+            }
         };
 
         let mut ar = AdmissionResponse::from(&serde_json::from_value::<

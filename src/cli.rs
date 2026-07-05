@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{
-    ArgAction::Append,
+    ArgAction::{Append, SetTrue},
     builder::{StringValueParser, TypedValueParser},
     *,
 };
@@ -30,11 +30,16 @@ pub struct WebhookArguments {
     pub json_path: Vec<JpQuery>,
     #[arg(short('v'), long, action = Append)]
     pub jp_value: Vec<String>,
-    #[arg(short('a'), long, action = Append)]
-    pub jp_all_must_match: Vec<bool>,
+    #[arg(short('a'), long, action = SetTrue)]
+    pub jp_all_must_match: Vec<bool>, // TODO: bug -a needs value
 
-    #[arg(short('A'), long, default_value = "false")]
-    pub all_must_match: bool,
+    /// How to combine the results of all matches specified by `-j`, `-v`, `-a`.
+    /// Without this option, the results are combined by **any**.
+    /// With this option, but not giving a value, the results are combined by **all**.
+    /// With this option, and giving a _boolean_expression_, the results are combined by the expression.
+    #[arg(short('A'), long, num_args = 0..=1, default_missing_value = "ALL")]
+    pub match_combiner: Option<String>,
+
     /// Webhook service TLS certificate file path
     #[arg(short('c'), long)]
     pub tls_certificate_file_name: PathBuf,

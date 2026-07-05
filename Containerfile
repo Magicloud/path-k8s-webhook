@@ -3,7 +3,11 @@ FROM ghcr.io/magicloud/rust-stable:latest AS builder
 WORKDIR /usr/src/myapp
 COPY . .
 
-RUN cargo install --path . --target x86_64-unknown-linux-musl
+ENV SCCACHE_DIR=/sccache
+ENV XDG_RUNTIME_DIR=/tmp/sccache-runtime
+ENV SCCACHE_SERVER_UDS=/tmp/sccache-runtime/sccache.socket
+
+RUN --mount=type=cache,target=/sccache,id=rust mkdir -p /tmp/sccache-runtime && sccache --start-server && cargo install --path . --target x86_64-unknown-linux-musl && sccache --stop-server
 
 
 FROM alpine:latest
