@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use axum::{
     Json, Router,
@@ -10,7 +10,7 @@ use axum::{
 };
 use axum_extra::headers::{ContentType, HeaderMapExt};
 use axum_server::tls_rustls::RustlsConfig;
-use clap::{ArgMatches, FromArgMatches, parser::ValuesRef};
+use clap::ArgMatches;
 use evalexpr::{
     ContextWithMutableVariables, DefaultNumericTypes, HashMapContext, Node, build_operator_tree,
 };
@@ -25,7 +25,7 @@ use kube::{
 };
 use serde_json::Value;
 
-use crate::cli::{TypeHelper, WebhookArguments};
+use crate::{cli::TypeHelper, helper::chunk_by};
 
 #[derive(Debug)]
 pub struct Match {
@@ -34,9 +34,15 @@ pub struct Match {
 }
 
 #[derive(Debug)]
-pub struct MatchValue {
-    pub value: String,
-    pub all_must_match: bool,
+pub enum MatchValue {
+    Value {
+        value: String,
+        all_must_match: bool,
+    },
+    JsonPath {
+        json_path: JpQuery,
+        all_must_match: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -73,85 +79,101 @@ impl Webhook {
         Ok(())
     }
 }
-impl TryFrom<&ArgMatches> for Webhook {
+impl TryFrom<ArgMatches> for Webhook {
     type Error = eyre::Report;
 
-    fn try_from(args: &ArgMatches) -> Result<Self> {
-        let struct_args = WebhookArguments::from_arg_matches(args)?;
-
+    fn try_from(mut args: ArgMatches) -> Result<Self> {
         let json_path = (|key| {
-            let k: ValuesRef<JpQuery> = args.get_many(key)?;
-            let i = args.indices_of(key)?;
-            Some(k.map(TypeHelper::from).zip(i).collect::<Vec<_>>())
+            let i = args.indices_of(key)?.collect::<Vec<_>>();
+            let k = args.remove_many(key)?;
+            Some(k.map(TypeHelper::JpQueryS).zip(i).collect::<Vec<_>>())
         })("json_path")
         .unwrap_or_default();
         let value = (|key| {
-            let k: ValuesRef<String> = args.get_many(key)?;
-            let i = args.indices_of(key)?;
-            Some(k.map(TypeHelper::from).zip(i).collect::<Vec<_>>())
+            let i = args.indices_of(key)?.collect::<Vec<_>>();
+            let k = args.remove_many(key)?;
+            Some(k.map(TypeHelper::String).zip(i).collect::<Vec<_>>())
         })("jp_value")
         .unwrap_or_default();
+        let value_json_path = (|key| {
+            let i = args.indices_of(key)?.collect::<Vec<_>>();
+            let k = args.remove_many(key)?;
+            Some(k.map(TypeHelper::JpQueryD).zip(i).collect::<Vec<_>>())
+        })("jp_value_json_path")
+        .unwrap_or_default();
         let all_must_match = (|key| {
-            let k: ValuesRef<bool> = args.get_many(key)?;
-            let i = args.indices_of(key)?;
-            Some(k.map(TypeHelper::from).zip(i).collect::<Vec<_>>())
+            let i = args.indices_of(key)?.collect::<Vec<_>>();
+            let k = args.remove_many(key)?;
+            Some(k.map(TypeHelper::Bool).zip(i).collect::<Vec<_>>())
         })("jp_all_must_match")
         .unwrap_or_default();
-        let mut prepare = [json_path, value, all_must_match]
+        let mut prepare = [json_path, value, value_json_path, all_must_match]
             .into_iter()
             .flatten()
             .collect::<Vec<_>>();
         prepare.sort_by_key(|(_, i)| *i);
-
-        let mut i = 0;
-        let mut matches = vec![];
-        while i < prepare.len() {
-            let m = if let Some((TypeHelper::JpQuery(j), _)) = prepare.get(i) {
-                i += 1;
-                if let Some((TypeHelper::String(v), _)) = prepare.get(i) {
-                    i += 1;
-                    Match {
-                        json_path: (**j).clone(),
-                        value: if let Some((TypeHelper::Bool(a), _)) = prepare.get(i) {
-                            i += 1;
-                            Some(MatchValue {
-                                value: (**v).clone(),
-                                all_must_match: **a,
-                            })
-                        } else {
-                            Some(MatchValue {
-                                value: (**v).clone(),
-                                all_must_match: false,
-                            })
-                        },
-                    }
-                } else {
-                    Match {
-                        json_path: (**j).clone(),
-                        value: None,
+        let matches = chunk_by(prepare, |(n, _)| !matches!(n, TypeHelper::JpQueryS(_)))
+            .into_iter()
+            .map(|match_data| {
+                let mut query = None;
+                let mut all = false;
+                let mut value = None;
+                let mut target_jp = None;
+                for (i, _) in match_data {
+                    match i {
+                        TypeHelper::JpQueryS(jp_query) => query = Some(jp_query),
+                        TypeHelper::JpQueryD(jp_query) => target_jp = Some(jp_query),
+                        TypeHelper::String(s) => value = Some(s),
+                        TypeHelper::Bool(b) => all = b,
                     }
                 }
-            } else {
-                Err(eyre!(""))?
-            };
-            matches.push(m);
-        }
 
-        Ok(Webhook {
+                let query = query.ok_or_else(|| eyre!(""))?;
+                match (value, target_jp) {
+                    (None, None) => Ok(Match {
+                        json_path: query,
+                        value: None,
+                    }),
+                    (None, Some(v)) => Ok(Match {
+                        json_path: query,
+                        value: Some(MatchValue::JsonPath {
+                            json_path: v,
+                            all_must_match: all,
+                        }),
+                    }),
+                    (Some(v), None) => Ok(Match {
+                        json_path: query,
+                        value: Some(MatchValue::Value {
+                            value: v,
+                            all_must_match: all,
+                        }),
+                    }),
+                    (Some(_), Some(_)) => Err(eyre!("-v and -p cannot be used together")),
+                }
+            })
+            .collect::<Result<Vec<Match>>>()?;
+
+        Ok(Self {
             matches,
-            combiner: match struct_args.match_combiner {
+            combiner: match args.remove_one("match_combiner") {
                 None => MatchCombiner::Any,
                 Some(str) => {
                     if str == "ALL" {
                         MatchCombiner::All
                     } else {
-                        MatchCombiner::BooleanExpression(build_operator_tree(&str)?)
+                        MatchCombiner::BooleanExpression(build_operator_tree(str)?)
                     }
                 }
             },
-            tls_certificate_file_name: struct_args.tls_certificate_file_name,
-            tls_private_key_file_name: struct_args.tls_private_key_file_name,
-            name: struct_args.name,
+            tls_certificate_file_name: args
+                .remove_one("tls_certificate_file_name")
+                .ok_or_else(|| eyre!("No tls_certificate_file_name specified"))?,
+            tls_private_key_file_name: args
+                .remove_one("tls_private_key_file_name")
+                .ok_or_else(|| eyre!("No tls_private_key_file_name specified"))?,
+            name: args
+                .remove_one("name")
+                .ok_or_else(|| eyre!("No name specified"))?,
         })
     }
 }
@@ -160,51 +182,75 @@ async fn validate(
     State(data): State<Arc<Webhook>>,
     Json(mut admission_review): Json<Value>,
 ) -> Result<Json<AdmissionReview<DynamicObject>>, String> {
-    eprintln!("{:?}", data.matches);
     let mut try_block = || {
         let mut review =
             serde_json::from_value::<AdmissionReview<DynamicObject>>(admission_review.clone())?;
 
         let req = admission_review
             .get_mut("request")
-            .ok_or(eyre!("Cannot get `request` object"))?
+            .ok_or_else(|| eyre!("Cannot get `request` object"))?
             .take();
         let obj = req
             .get("object")
-            .ok_or(eyre!("Cannot get `object` object"))?;
+            .ok_or_else(|| eyre!("Cannot get `object` object"))?;
 
-        // TODO: logs failures
         let results = data
             .matches
             .iter()
             .map(|m| {
                 let results = js_path_process(&m.json_path, obj)?;
-                let result = if let Some(ref tv) = m.value {
-                    let check = |v: QueryRef<Value>| {
-                        eprint!(
-                            "path({}) value({}) equals target value({})? ",
-                            m.json_path,
-                            v.clone().val(),
-                            tv.value
-                        );
-                        let r = *v.val() == *tv.value;
-                        eprintln!("{r}");
-                        r
-                    };
-                    if tv.all_must_match {
-                        results.into_iter().all(check)
-                    } else {
-                        results.into_iter().any(check)
+
+                let result = match m.value.as_ref() {
+                    Some(MatchValue::JsonPath {
+                        json_path,
+                        all_must_match,
+                    }) => {
+                        let target_values = js_path_process(json_path, obj)?;
+                        let src: HashSet<&Value> = results
+                            .into_iter()
+                            .map(QueryRef::val)
+                            .collect::<HashSet<_>>();
+                        let dst = target_values
+                            .into_iter()
+                            .map(QueryRef::val)
+                            .collect::<HashSet<_>>();
+                        eprintln!("{src:?}");
+                        eprintln!("{dst:?}");
+                        (*all_must_match && src.len() == dst.len() && src.is_subset(&dst)) // equal
+                            || !(*all_must_match || src.is_disjoint(&dst)) // intersect or equal
                     }
-                } else {
-                    if !results.is_empty() {
-                        eprintln!("path ({}) matched", m.json_path);
-                        true
-                    } else {
-                        eprintln!("path ({}) not matched", m.json_path);
-                        false
+                    Some(MatchValue::Value {
+                        value,
+                        all_must_match,
+                    }) => {
+                        let check = |v: QueryRef<Value>| {
+                            eprint!(
+                                "path({}) value({}) equals target value({})? ",
+                                m.json_path,
+                                v.clone().val(),
+                                value
+                            );
+                            let r = *v.val() == *value;
+                            eprintln!("{r}");
+                            r
+                        };
+                        if *all_must_match {
+                            results.into_iter().all(check)
+                        } else {
+                            results.into_iter().any(check)
+                        }
+                    }
+                    None => {
+                        if results.is_empty() {
+                            eprintln!("path ({}) not matched", m.json_path);
+                            false
+                        } else {
+                            eprintln!("path ({}) matched", m.json_path);
+                            true
+                        }
                     }
                 };
+
                 Ok(result)
             })
             .collect::<Result<Vec<_>>>()?;

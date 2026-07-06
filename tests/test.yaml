@@ -54,6 +54,16 @@ metadata:
   namespace: test
 spec:
   rules:
+  - host: test.magicloud.lan
+    http:
+      paths:
+        - backend:
+            service:
+              name: whoami
+              port:
+                number: 80
+          path: /
+          pathType: Prefix
   - host: whoami.magicloud.lan
     http:
       paths:
@@ -64,7 +74,8 @@ spec:
               number: 80
         path: /
         pathType: Prefix
-#  tls:
-#  - hosts:
-#      - whoami.magicloud.lan
-#    secretName: whoami-tls
+  tls:
+  - hosts:
+      - whoami.magicloud.lan
+      - test.magicloud.lan
+    secretName: whoami-tls

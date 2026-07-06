@@ -1,5 +1,9 @@
 version: '3'
 
+# output:
+#     group:
+#         begin: "==> [{{now | date \"15:04:05\"}}] Starting {{.TASK}}..."
+#         end: "==> Finished {{.TASK}}."
 tasks:
     build:
         sources:
@@ -29,6 +33,7 @@ tasks:
             - kubectl apply -k .
             - kubectl -ntest rollout status deployment/path-k8s-webhook --timeout=1m
             - date > ../.task/deploy_task
+            - sleep 60s
 
     test:
         deps: [deploy]

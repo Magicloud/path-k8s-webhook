@@ -35,6 +35,7 @@ k8s-openapi = { version = "*", default-features = false, features = [
 kube = { version = "*", features = ["admission"] }
 jsonpath-rust = { version = "*" }
 evalexpr = { version = "*" }
+itertools = { version = "*" }
 # gateway-api = { version = "0.19" }
 # serde = { version = "1", features = ["derive"] }
 serde_json = { version = "*" }

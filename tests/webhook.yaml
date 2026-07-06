@@ -62,15 +62,11 @@ spec:
           - -k
           - /tls/tls.key
           - -j
-          - "$.spec.tls[0]"
-          - -j
-          - "$.metadata.namespace"
-          - -v
-          - test
-          - -a
+          - "$.spec.tls[*].hosts[*]"
+          - -p
+          - "$.spec.rules[*].host"
           - -n
           - ingress-tls
-          - -A
         ports:
         - containerPort: 443
           name: https
