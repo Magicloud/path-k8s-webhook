@@ -32,13 +32,14 @@ k8s-openapi = { version = "*", default-features = false, features = [
     "std",
     "earliest",
 ] }
-kube = { version = "*", features = ["admission"] }
+kube = { version = "*", features = ["admission", "client"] }
 jsonpath-rust = { version = "*" }
 evalexpr = { version = "*" }
 itertools = { version = "*" }
+futures = { version = "*", features = ["alloc"] }
+serde_json = { version = "*" }
 # gateway-api = { version = "0.19" }
 # serde = { version = "1", features = ["derive"] }
-serde_json = { version = "*" }
 # serde_yaml = { version = "0.9.33" }
 # json-patch = { version = "4" }
 # tracing = { version = "0.1" }
@@ -54,7 +55,6 @@ serde_json = { version = "*" }
 #     "grpc-tonic",
 # ] }
 # opentelemetry-stdout = { version = "0.31" }
-# futures = { version = "0.3" }
 # smol = { version = "2" }
 # blocking = { version = "1" }
 # async-compat = { version = "0.2" }

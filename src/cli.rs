@@ -26,14 +26,20 @@ pub struct WebhookArguments {
     /// Giving how JSON path works, the result could be some values, or nothing.
     /// If it intends to return values, `-v` and `-a` could be used to check the values.
     /// Or, do not pass `-v` and `-a` just to check if there are values (existence).
-    ///  If the value should be fetched via another JSON path, use `-p`. `-v` and `-p` cannot be appear together. Gving both paths returns a set of results, there would be four cases.
+    /// If the value should be fetched via another JSON path, use `-p`. `-v` and `-p` cannot be appear together. Gving both paths returns a set of results, there would be four cases.
     /// 1. The two sets equal.
-    /// 2. Thw two sets intersect.
+    /// 2. The two sets intersect.
     /// 3. and 4. One set includes the other. (Subsume if expressing the backward). These two cases are not implenmented yet.
+    ///
+    /// Additionally, `-r` can be used with `-p`, to specify a K8S resource to query for values to compare. The format of `-r` value is "Kind:Namespace/Name". And `-i` to skip validation if the resource does not exist.
     #[arg(short('j'), long, required = true, action = Append, value_parser = StringValueParser::new().try_map(|s| parse_json_path(&s)))]
     pub json_path: Vec<JpQuery>,
     #[arg(short('v'), long, action = Append)]
     pub jp_value: Vec<String>,
+    #[arg(short('i'), long, action = Append)]
+    pub jp_ignore: Vec<bool>,
+    #[arg(short('r'), long, action = Append)]
+    pub jp_resource: Vec<String>,
     #[arg(short('p'), long, action = Append, value_parser = StringValueParser::new().try_map(|s| parse_json_path(&s)))]
     pub jp_value_json_path: Vec<JpQuery>,
     #[arg(short('a'), long, action = SetTrue)]
@@ -54,12 +60,4 @@ pub struct WebhookArguments {
     pub tls_private_key_file_name: PathBuf,
     #[arg(short, long)]
     pub name: String,
-}
-
-#[derive(Debug)]
-pub enum TypeHelper {
-    JpQueryS(JpQuery),
-    JpQueryD(JpQuery),
-    String(String),
-    Bool(bool),
 }

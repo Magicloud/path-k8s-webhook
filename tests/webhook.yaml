@@ -2,38 +2,35 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: test
-# ---
-# apiVersion: rbac.authorization.k8s.io/v1
-# kind: ClusterRole
-# metadata:
-#   name: path-k8s-webhook
-# rules:
-# - apiGroups: [""]
-#   resources: ["namespaces"]
-#   verbs: ["list"]
-# - apiGroups: ["networking.k8s.io/v1"]
-#   resources: ["ingresses"]
-#   verbs: ["get"]
-# ---
-# apiVersion: v1
-# kind: ServiceAccount
-# metadata:
-#   name: path-k8s-webhook
-#   namespace: test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: path-k8s-webhook
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: path-k8s-webhook
+  namespace: test
 # automountServiceAccountToken: true
-# ---
-# apiVersion: rbac.authorization.k8s.io/v1
-# kind: ClusterRoleBinding
-# metadata:
-#   name: path-k8s-webhook
-# subjects:
-# - kind: ServiceAccount
-#   name: path-k8s-webhook
-#   namespace: test
-# roleRef:
-#   kind: ClusterRole
-#   name: path-k8s-webhook
-#   apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: path-k8s-webhook
+subjects:
+- kind: ServiceAccount
+  name: path-k8s-webhook
+  namespace: test
+roleRef:
+  kind: ClusterRole
+  name: path-k8s-webhook
+  apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -50,7 +47,7 @@ spec:
       labels:
         app: path-k8s-webhook
     spec:
-      # serviceAccountName: path-k8s-webhook
+      serviceAccountName: path-k8s-webhook
       # automountServiceAccountToken: true
       containers:
       - name: path-k8s-webhook
@@ -63,6 +60,8 @@ spec:
           - /tls/tls.key
           - -j
           - "$.spec.tls[*].hosts[*]"
+          - -r
+          - ingress:nextcloud/nextcloud
           - -p
           - "$.spec.rules[*].host"
           - -n
