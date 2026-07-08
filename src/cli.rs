@@ -5,7 +5,8 @@ use clap::{
     Args, Parser, Subcommand,
     builder::{StringValueParser, TypedValueParser},
 };
-use jsonpath_rust::parser::{model::JpQuery, parse_json_path};
+use jsonptr::PointerBuf;
+use serde_json::Value;
 
 #[derive(Subcommand, Debug)]
 #[command(rename_all = "lower")]
@@ -23,29 +24,30 @@ pub struct Cli {
 #[derive(Debug, Args)]
 pub struct WebhookArguments {
     /// The JSON path to match.
-    /// Giving how JSON path works, the result could be some values, or nothing.
-    /// If it intends to return values, `-v` and `-a` could be used to check the values.
-    /// Or, do not pass `-v` and `-a` just to check if there are values (existence).
-    /// If the value should be fetched via another JSON path, use `-p`. `-v` and `-p` cannot be appear together. Gving both paths returns a set of results, there would be four cases.
-    /// 1. The two sets equal.
-    /// 2. The two sets intersect.
-    /// 3. and 4. One set includes the other. (Subsume if expressing the backward). These two cases are not implenmented yet.
+    /// If it intends to return values, `-v` and `-o` could be used to check the values.
+    /// `-o` means containing, means query result or value, one contains another.
+    /// Or, do not pass `-v` and `-o` just to check if there are values (existence).
+    /// If the value should be fetched via another JSON path, use `-p`. `-v` and `-p` cannot be appear together.
+    /// When both query result and value (or result from `-p`) are vecs. There are four cases.
+    /// 1. The two sets equal. This is default by not specifying `-o`.
+    /// 2. The two sets intersect. Use `-o INTERSECT`.
+    /// 3. and 4. One set includes the other. (Subsume if expressing the backward). Covered by `-o`
     ///
     /// Additionally, `-r` can be used with `-p`, to specify a K8S resource to query for values to compare. The format of `-r` value is "Kind:Namespace/Name". And `-i` to skip validation if the resource does not exist.
-    #[arg(short('j'), long, required = true, action = Append, value_parser = StringValueParser::new().try_map(|s| parse_json_path(&s)))]
-    pub json_path: Vec<JpQuery>,
-    #[arg(short('v'), long, action = Append)]
-    pub jp_value: Vec<String>,
-    #[arg(short('i'), long, action = Append)]
+    #[arg(short('j'), long, required = true, action = Append, value_parser = StringValueParser::new().try_map(|s| PointerBuf::parse(&s)))]
+    pub json_path: Vec<PointerBuf>,
+    #[arg(short('v'), long, action = Append, value_parser = StringValueParser::new().try_map(|s| serde_json::from_str::<Value>(&s)))]
+    pub jp_value: Vec<Value>,
+    #[arg(short('i'), long, action = SetTrue)]
     pub jp_ignore: Vec<bool>,
     #[arg(short('r'), long, action = Append)]
     pub jp_resource: Vec<String>,
-    #[arg(short('p'), long, action = Append, value_parser = StringValueParser::new().try_map(|s| parse_json_path(&s)))]
-    pub jp_value_json_path: Vec<JpQuery>,
-    #[arg(short('a'), long, action = SetTrue)]
-    pub jp_all_must_match: Vec<bool>,
+    #[arg(short('p'), long, action = Append, value_parser = StringValueParser::new().try_map(|s| PointerBuf::parse(&s)))]
+    pub jp_value_json_path: Vec<PointerBuf>,
+    #[arg(short('o'), long, action = Append, num_args = 0..=1, default_missing_value = "CONTAIN")]
+    pub jp_contains: Vec<String>,
 
-    /// How to combine the results of all matches specified by `-j`, `-v`, `-a`.
+    /// How to combine the results of all matches specified by `-j`, `-v`, `-p`.
     /// Without this option, the results are combined by **any**.
     /// With this option, but not giving a value, the results are combined by **all**.
     /// With this option, and giving a _boolean\_expression_, the results are combined by the expression.
@@ -58,6 +60,6 @@ pub struct WebhookArguments {
     /// Webhook service TLS private key file path
     #[arg(short('k'), long)]
     pub tls_private_key_file_name: PathBuf,
-    #[arg(short, long)]
+    #[arg(short('n'), long)]
     pub name: String,
 }

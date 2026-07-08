@@ -54,18 +54,16 @@ spec:
         image: registry.magicloud.lan/pkw:latest
         args:
           - webhook
+          - -n
+          - ingress-tls
           - -c
           - /tls/tls.crt
           - -k
           - /tls/tls.key
           - -j
-          - "$.spec.tls[*].hosts[*]"
-          - -r
-          - ingress:nextcloud/nextcloud
-          - -p
-          - "$.spec.rules[*].host"
-          - -n
-          - ingress-tls
+          - /spec/tls/0/hosts
+          - -v
+          - "\"abc\""
         ports:
         - containerPort: 443
           name: https

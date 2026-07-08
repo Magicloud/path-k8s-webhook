@@ -31,7 +31,7 @@ tasks:
         cmds:
             - kustomize edit set image registry.magicloud.lan/pkw=registry.magicloud.lan/pkw@$(cat ../.task/image_sha256)
             - kubectl apply -k .
-            - kubectl -ntest rollout status deployment/path-k8s-webhook --timeout=1m
+            - kubectl -ntest rollout status deployment/path-k8s-webhook --timeout=1m || kubectl -ntest logs $(kubectl -ntest get pods -l app=path-k8s-webhook -o jsonpath='{.items[?(@.status.containerStatuses[0].state.waiting.reason=="CrashLoopBackOff")].metadata.name}')
             - date > ../.task/deploy_task
             - sleep 60s
 

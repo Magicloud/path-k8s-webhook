@@ -1,7 +1,7 @@
 [package]
 name = "path-k8s-webhook"
 edition = "2024"
-version = "2026.7.6"
+version = "2026.7.10"
 description = "Kubernetes AdmissionControl webhook to validate or mutate specified resource via JSON path"
 license = "Apache-2.0"
 repository = "https://github.com/Magicloud/path-k8s-webhook"
@@ -33,7 +33,7 @@ k8s-openapi = { version = "*", default-features = false, features = [
     "earliest",
 ] }
 kube = { version = "*", features = ["admission", "client"] }
-jsonpath-rust = { version = "*" }
+jsonptr = { version = "*" }
 evalexpr = { version = "*" }
 itertools = { version = "*" }
 futures = { version = "*", features = ["alloc"] }

@@ -11,9 +11,8 @@ use axum::{
 use axum_extra::headers::{ContentType, HeaderMapExt};
 use axum_server::tls_rustls::RustlsConfig;
 use evalexpr::{ContextWithMutableVariables, DefaultNumericTypes, HashMapContext};
-use eyre::{Result, eyre};
-use futures::future::try_join_all;
-use jsonpath_rust::query::{QueryRef, js_path_process};
+use eyre::{Report, Result, eyre};
+use futures::future::join_all;
 use kube::{
     Api, Client, Discovery,
     api::{ApiResource, DynamicObject, GroupVersionKind},
@@ -21,7 +20,7 @@ use kube::{
 };
 use serde_json::Value;
 
-use crate::types::{Match, MatchCombiner, MatchValue, Webhook};
+use crate::types::{Contains, Match, MatchCombiner, MatchValue, Webhook};
 
 impl Webhook {
     pub async fn start(self) -> Result<()> {
@@ -48,62 +47,69 @@ async fn validate(
     State(data): State<Arc<Webhook>>,
     Json(mut admission_review): Json<Value>,
 ) -> Result<Json<AdmissionReview<DynamicObject>>, String> {
-    let mut try_block = async || {
-        let mut review =
+    let mut try_block = || {
+        let review =
             serde_json::from_value::<AdmissionReview<DynamicObject>>(admission_review.clone())?;
-
-        let req = admission_review
+        let mut req = admission_review
             .get_mut("request")
             .ok_or_else(|| eyre!("Cannot get `request` object"))?
             .take();
         let obj = req
-            .get("object")
-            .ok_or_else(|| eyre!("Cannot get `object` object"))?;
+            .get_mut("object")
+            .ok_or_else(|| eyre!("Cannot get `object` object"))?
+            .take();
+        let ar = AdmissionResponse::from(
+            &serde_json::from_value::<AdmissionRequest<DynamicObject>>(req)?,
+        );
+        Ok((review, obj, ar))
+    };
+    let (mut review, obj, mut ar) = try_block().map_err(|e: Report| e.to_string())?;
 
-        let results = data
-            .matches
-            .iter()
-            .map(async |m| matching(m, obj).await)
-            .collect::<Vec<_>>();
-        let results: Vec<_> = try_join_all(results).await?;
-        let mut results = results.iter();
+    let results = data
+        .matches
+        .iter()
+        .map(async |m| match matching(m, &obj).await {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("{e:}");
+                false
+            }
+        })
+        .collect::<Vec<_>>();
+    let results: Vec<_> = join_all(results).await;
+    let mut results = results.iter();
 
-        eprintln!("{:?}", data.combiner);
-        let result = match &data.combiner {
-            MatchCombiner::Any => results.any(|r| *r),
-            MatchCombiner::All => results.all(|r| *r),
-            MatchCombiner::BooleanExpression(node) => {
-                let mut context = HashMapContext::<DefaultNumericTypes>::new();
+    let result = match &data.combiner {
+        MatchCombiner::Any => results.any(|r| *r),
+        MatchCombiner::All => results.all(|r| *r),
+        MatchCombiner::BooleanExpression(node) => {
+            let mut context = HashMapContext::<DefaultNumericTypes>::new();
+            let try_block = || {
                 for (i, r) in results.enumerate() {
                     let i = i + 1; // Sugar. So cli argument starts from 1.
                     context.set_value(format!("v{i}"), evalexpr::Value::from(*r))?;
                 }
-                node.eval_boolean_with_context(&context)?
+                let b = node.eval_boolean_with_context(&context)?;
+                Ok(b) as Result<bool>
+            };
+            match try_block() {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("{e}");
+                    false
+                }
             }
-        };
-
-        let mut ar = AdmissionResponse::from(&serde_json::from_value::<
-            AdmissionRequest<DynamicObject>,
-        >(req)?);
-
-        if result {
-            ar.allowed = true;
-        } else {
-            ar = ar.deny(format!("fail json path validation {}", data.name));
         }
-
-        review.response = Some(ar);
-        review.request = None;
-
-        Ok(review) as Result<AdmissionReview<DynamicObject>>
     };
-    match try_block().await {
-        Ok(ar) => Ok(Json(ar)),
-        Err(e) => {
-            eprintln!("{e:?}");
-            Err(e.to_string())
-        }
+
+    if result {
+        ar.allowed = true;
+    } else {
+        ar = ar.deny(format!("fail json path validation {}", data.name));
     }
+    review.response = Some(ar);
+    review.request = None;
+    Ok(Json(review))
 }
 
 async fn mutate() -> (StatusCode, &'static str) {
@@ -124,12 +130,63 @@ async fn content_type_json(
 }
 
 async fn matching(m: &Match, obj: &Value) -> Result<bool> {
-    let results = js_path_process(&m.json_path, obj)?;
+    let results = m.json_path.resolve(obj)?;
 
-    let result = match m.value.as_ref() {
+    let check = |target_values: &Value| {
+        let result = match m.contains {
+            Contains::Equal => target_values == results,
+            Contains::Intersect if results.is_array() && target_values.is_array() => {
+                let src = results
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .collect::<HashSet<&Value>>();
+                let dst = target_values
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .collect::<HashSet<&Value>>();
+                !src.is_disjoint(&dst)
+            }
+            Contains::Contain if results.is_array() && target_values.is_array() => {
+                let src = results
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .collect::<HashSet<&Value>>();
+                let dst = target_values
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .collect::<HashSet<&Value>>();
+                src.is_subset(&dst) || src.is_superset(&dst)
+            }
+            Contains::Contain if results.is_array() => {
+                let src = results
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .collect::<HashSet<&Value>>();
+                src.contains(target_values)
+            }
+            Contains::Contain if target_values.is_array() => {
+                let dst = target_values
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .collect::<HashSet<&Value>>();
+                dst.contains(results)
+            }
+            Contains::Contain | Contains::Intersect => {
+                Err(eyre!("Source and target are not both list"))?
+            }
+        };
+        Ok(result) as Result<_>
+    };
+
+    let result = match &m.value {
         Some(MatchValue::JsonPath {
             json_path,
-            all_must_match,
             resource,
             ignore_resource_not_exist,
         }) => {
@@ -161,61 +218,23 @@ async fn matching(m: &Match, obj: &Value) -> Result<bool> {
             } else {
                 None
             };
-
-            let check = |o| {
-                let target_values = js_path_process(json_path, o)?;
-                let src: HashSet<&Value> = results
-                    .into_iter()
-                    .map(QueryRef::val)
-                    .collect::<HashSet<_>>();
-                let dst = target_values
-                    .into_iter()
-                    .map(QueryRef::val)
-                    .collect::<HashSet<_>>();
-                eprintln!("{src:?}");
-                eprintln!("{dst:?}");
-                Ok(
-                    (*all_must_match && src.len() == dst.len() && src.is_subset(&dst)) // equal
-                            || !(*all_must_match || src.is_disjoint(&dst)), // intersect or equal
-                ) as Result<_>
-            };
-            match ext_obj {
-                Some(None) if *ignore_resource_not_exist => true,
-                Some(None) => Err(eyre!(""))?,
-                Some(Some(ext_obj)) => check(&ext_obj)?,
-                None => check(obj)?,
+            match &ext_obj {
+                Some(None) if *ignore_resource_not_exist => true, // resource required, but not exist and ignore.
+                Some(None) => Err(eyre!(""))?, // resource required, but not exist.
+                Some(Some(ext_obj)) => {
+                    // checking value from resource object
+                    let o = json_path.resolve(ext_obj)?;
+                    check(o)?
+                }
+                None => {
+                    // checking value from this object
+                    let o = json_path.resolve(obj)?;
+                    check(o)?
+                }
             }
         }
-        Some(MatchValue::Value {
-            value,
-            all_must_match,
-        }) => {
-            let check = |v: QueryRef<Value>| {
-                eprint!(
-                    "path({}) value({}) equals target value({})? ",
-                    m.json_path,
-                    v.clone().val(),
-                    value
-                );
-                let r = *v.val() == *value;
-                eprintln!("{r}");
-                r
-            };
-            if *all_must_match {
-                results.into_iter().all(check)
-            } else {
-                results.into_iter().any(check)
-            }
-        }
-        None => {
-            if results.is_empty() {
-                eprintln!("path ({}) not matched", m.json_path);
-                false
-            } else {
-                eprintln!("path ({}) matched", m.json_path);
-                true
-            }
-        }
+        Some(MatchValue::Value { value }) => check(value)?,
+        None => !results.is_null(),
     };
 
     Ok(result)
