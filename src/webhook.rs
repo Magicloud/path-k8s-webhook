@@ -10,14 +10,13 @@ use axum::{
 use axum_extra::headers::{ContentType, HeaderMapExt};
 use axum_server::tls_rustls::RustlsConfig;
 use clap::ArgMatches;
-use evalexpr::build_operator_tree;
 use eyre::{Result, eyre};
 use macroweave::repeat;
 
 use crate::{helper::chunk_by, validation::validate};
 use crate::{
     mutation::mutate,
-    types::{Contains, K8SResource, Match, MatchCombiner, MatchValue, TypeHelper},
+    types::{Contains, Match, MatchCombiner, MatchValue, TypeHelper},
 };
 
 pub struct Webhook {
@@ -35,9 +34,13 @@ impl TryFrom<ArgMatches> for Webhook {
             (json_path, TypeHelper::PointerBufS),
             (jp_value, TypeHelper::Value),
             (jp_ignore, TypeHelper::BoolI),
-            (jp_resource, TypeHelper::StringR),
+            (jp_resource, TypeHelper::Resource),
             (jp_value_json_path, TypeHelper::PointerBufD),
-            (jp_contains, TypeHelper::StringC),
+            (jp_contains, TypeHelper::Contains),
+
+            (jp_value_m, TypeHelper::ValueM),
+            (jp_resource_m, TypeHelper::ResourceM),
+            (jp_value_m_json_path, TypeHelper::PointerBufDM),
         ] {
             let Key = (|key| {
                 let i = args.indices_of(key)?.collect::<Vec<_>>();
@@ -54,6 +57,9 @@ impl TryFrom<ArgMatches> for Webhook {
             jp_resource,
             jp_value_json_path,
             jp_contains,
+            jp_value_m,
+            jp_resource_m,
+            jp_value_m_json_path,
         ]
         .into_iter()
         .flatten()
@@ -68,67 +74,68 @@ impl TryFrom<ArgMatches> for Webhook {
                 let mut resource = None;
                 let mut ignore = false;
                 let mut target_jp = None;
+
+                let mut value_m = None;
+                let mut resource_m = None;
+                let mut target_jp_m = None;
                 for (i, _) in match_data {
                     match i {
                         TypeHelper::PointerBufS(jp_query) => query = Some(jp_query),
                         TypeHelper::PointerBufD(jp_query) => target_jp = Some(jp_query),
                         TypeHelper::Value(v) => value = Some(v),
-                        TypeHelper::StringR(s) => resource = Some(K8SResource::try_from(s)?),
+                        TypeHelper::Resource(r) => resource = Some(r),
                         TypeHelper::BoolI(b) => ignore = b,
-                        TypeHelper::StringC(s) => {
-                            if s.eq_ignore_ascii_case("CONTAIN") {
-                                contains = Contains::Contain;
-                            } else if s.eq_ignore_ascii_case("INTERSECT") {
-                                contains = Contains::Intersect;
-                            }
-                        }
-                        TypeHelper::ValueM(value) => todo!(),
-                        TypeHelper::StringRM(_) => todo!(),
-                        TypeHelper::PointerBufDM(pointer_buf) => todo!(),
+                        TypeHelper::Contains(c) => contains = c,
+                        TypeHelper::ValueM(v) => value_m = Some(v),
+                        TypeHelper::ResourceM(r) => resource_m = Some(r),
+                        TypeHelper::PointerBufDM(p) => target_jp_m = Some(p),
                     }
                 }
 
                 let query = query.ok_or_else(|| eyre!(""))?;
+                let mut m = Match {
+                    json_path: query,
+                    value: None,
+                    contains,
+                    value_to_be: None,
+                };
                 match (value, target_jp) {
-                    (None, None) => Ok(Match {
-                        json_path: query,
-                        value: None,
-                        contains,
-                    }
-                    .into()),
-                    (None, Some(v)) => Ok(Match {
-                        json_path: query,
-                        value: Some(MatchValue::JsonPath {
+                    (None, None) => (),
+                    (None, Some(v)) => {
+                        m.value = Some(MatchValue::JsonPath {
                             json_path: v,
                             resource,
                             ignore_resource_not_exist: ignore,
-                        }),
-                        contains,
+                        });
                     }
-                    .into()),
-                    (Some(v), None) => Ok(Match {
-                        json_path: query,
-                        value: Some(MatchValue::Value { value: v }),
-                        contains,
+                    (Some(v), None) => m.value = Some(MatchValue::Value { value: v }),
+                    (Some(_), Some(_)) => {
+                        Err(eyre!("-v and -p cannot be used together"))?;
                     }
-                    .into()),
-                    (Some(_), Some(_)) => Err(eyre!("-v and -p cannot be used together")),
                 }
+                match (value_m, target_jp_m) {
+                    (None, None) => (),
+                    (None, Some(v)) => {
+                        m.value_to_be = Some(MatchValue::JsonPath {
+                            resource: resource_m,
+                            ignore_resource_not_exist: false,
+                            json_path: v,
+                        });
+                    }
+                    (Some(v), None) => m.value_to_be = Some(MatchValue::Value { value: v }),
+                    (Some(_), Some(_)) => {
+                        Err(eyre!(
+                            "--jp-value-m and --jp-value-m-json-path cannot be used together"
+                        ))?;
+                    }
+                }
+                Ok(m.into())
             })
             .collect::<Result<Vec<_>>>()?;
 
         Ok(Self {
             matches,
-            combiner: match args.remove_one::<&str>("match_combiner") {
-                None => MatchCombiner::Any,
-                Some(str) => {
-                    if str.eq_ignore_ascii_case("ALL") {
-                        MatchCombiner::All
-                    } else {
-                        MatchCombiner::BooleanExpression(build_operator_tree(str)?)
-                    }
-                }
-            },
+            combiner: args.remove_one::<MatchCombiner>("match_combiner").unwrap(), // unwrap is guaranteed by default_value
             tls_certificate_file_name: args
                 .remove_one("tls_certificate_file_name")
                 .ok_or_else(|| eyre!("No tls_certificate_file_name specified"))?,

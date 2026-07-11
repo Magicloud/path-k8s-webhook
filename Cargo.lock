@@ -1297,6 +1297,7 @@ dependencies = [
  "eyre",
  "futures",
  "itertools",
+ "json-patch",
  "jsonptr",
  "k8s-openapi",
  "kube",

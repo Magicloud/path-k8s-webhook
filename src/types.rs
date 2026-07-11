@@ -1,4 +1,6 @@
-use evalexpr::Node;
+use std::str::FromStr;
+
+use evalexpr::{Node, build_operator_tree};
 use eyre::{Report, Result, eyre};
 use jsonptr::PointerBuf;
 use serde_json::Value;
@@ -8,19 +10,20 @@ pub struct Match {
     pub json_path: PointerBuf,
     pub value: Option<MatchValue>,
     pub contains: Contains,
+    pub value_to_be: Option<MatchValue>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct K8SResource {
     pub kind: String,
     pub namespace: Option<String>,
     pub name: String,
 }
-impl TryFrom<String> for K8SResource {
-    type Error = Report;
+impl FromStr for K8SResource {
+    type Err = Report;
 
-    fn try_from(value: String) -> Result<Self> {
-        if let Some((k, nsn)) = value.split_once(':') {
+    fn from_str(s: &str) -> Result<Self> {
+        if let Some((k, nsn)) = s.split_once(':') {
             if let Some((ns, n)) = nsn.split_once('/') {
                 Ok(Self {
                     kind: k.to_string(),
@@ -52,18 +55,41 @@ pub enum MatchValue {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MatchCombiner {
     Any,
     All,
     BooleanExpression(Node),
 }
+impl FromStr for MatchCombiner {
+    type Err = Report;
 
-#[derive(Debug)]
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_ascii_uppercase().as_str() {
+            "" | "ALL" => Ok(Self::All),
+            "ANY" => Ok(Self::Any),
+            o => Ok(Self::BooleanExpression(build_operator_tree(o)?)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Contains {
     Equal,
     Intersect,
     Contain,
+}
+impl FromStr for Contains {
+    type Err = Report;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_ascii_uppercase().as_str() {
+            "" | "EQUAL" => Ok(Self::Equal),
+            "CONTAIN" => Ok(Self::Contain),
+            "INTERSECT" => Ok(Self::Intersect),
+            _ => Err(eyre!("")),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -71,11 +97,11 @@ pub enum TypeHelper {
     PointerBufS(PointerBuf),
     PointerBufD(PointerBuf),
     Value(Value),
-    StringR(String),
-    StringC(String),
+    Resource(K8SResource),
+    Contains(Contains),
     BoolI(bool),
 
     ValueM(Value),
-    StringRM(String),
+    ResourceM(K8SResource),
     PointerBufDM(PointerBuf),
 }

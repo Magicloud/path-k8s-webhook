@@ -61,13 +61,11 @@ spec:
           - -k
           - /tls/tls.key
           - -j
-          - /spec/tls/0
-          - -i
-          - -r
-          - ingress:default/test
-          - -p
-          - /spec/tls/1
-          - -o
+          - /spec/rules/0/http/paths/0/pathType
+          - -v
+          - ImplementationSpecific
+          - --jp-value-m
+          - Prefix
         ports:
         - containerPort: 443
           name: https
@@ -117,9 +115,33 @@ spec:
     protocol: TCP
     port: 443
     targetPort: https
+# ---
+# apiVersion: admissionregistration.k8s.io/v1
+# kind: ValidatingWebhookConfiguration
+# metadata:
+#   name: path-k8s-webhook
+#   namespace: test
+# webhooks:
+# - name: "path-k8s-webhook.magicloud.lan"
+#   rules:
+#   - apiGroups:   ["*"]
+#     apiVersions: ["*"]
+#     operations:  ["CREATE", "UPDATE"]
+#     resources:   ["ingresses"]
+#     scope:       "*"
+#   clientConfig:
+#     service:
+#       namespace: "test"
+#       name: "path-k8s-webhook"
+#       path: "/validate"
+#       port: 443
+#     caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJwRENDQVVxZ0F3SUJBZ0lSQUw5bUxNVnpXMStzTkpsTFlnY3hhN1F3Q2dZSUtvWkl6ajBFQXdJd01ERVMKTUJBR0ExVUVDaE1KVFdGbmFXTnNiM1ZrTVJvd0dBWURWUVFERXhGTllXZHBZMnh2ZFdRZ1VtOXZkQ0JEUVRBZQpGdzB5TlRFd01Ua3hNVE14TWpaYUZ3MHpOVEV3TVRjeE1UTXhNalphTURBeEVqQVFCZ05WQkFvVENVMWhaMmxqCmJHOTFaREVhTUJnR0ExVUVBeE1SVFdGbmFXTnNiM1ZrSUZKdmIzUWdRMEV3V1RBVEJnY3Foa2pPUFFJQkJnZ3EKaGtqT1BRTUJCd05DQUFUcVQxYjVUcEs5UUtnL3J2Z2REUEE3WnZLRWpEK1RaY201TURpY3l6cGNocnZVU1lubAorcDhaaUVULzdHSnpSdE5DQTVMQUkxL1I1UGc0UDM3bnpIcGlvMFV3UXpBT0JnTlZIUThCQWY4RUJBTUNBUVl3CkVnWURWUjBUQVFIL0JBZ3dCZ0VCL3dJQkFUQWRCZ05WSFE0RUZnUVVTMm9RTGVRMnlGZ2lVVTFuMElrRGRCd1kKcmhJd0NnWUlLb1pJemowRUF3SURTQUF3UlFJaEFQdFdIYTFFaHVzbWRoZHgwWVJzaVRGSU1qZU9ZdFlqK05XYgpZOWM2eDRRYkFpQURqSTVPY3hZdkNqeFR3cU1ERlNwcVc4RUFSQWVwK2xRTkxDUzZzT2VUUlE9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0t
+#   admissionReviewVersions: ["v1"]
+#   sideEffects: None
+#   timeoutSeconds: 5
 ---
 apiVersion: admissionregistration.k8s.io/v1
-kind: ValidatingWebhookConfiguration
+kind: MutatingWebhookConfiguration
 metadata:
   name: path-k8s-webhook
   namespace: test
@@ -129,13 +151,13 @@ webhooks:
   - apiGroups:   ["*"]
     apiVersions: ["*"]
     operations:  ["CREATE", "UPDATE"]
-    resources:   ["ingresses"]
+    resources:   ["*"]
     scope:       "*"
   clientConfig:
     service:
       namespace: "test"
       name: "path-k8s-webhook"
-      path: "/validate"
+      path: "/mutate"
       port: 443
     caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJwRENDQVVxZ0F3SUJBZ0lSQUw5bUxNVnpXMStzTkpsTFlnY3hhN1F3Q2dZSUtvWkl6ajBFQXdJd01ERVMKTUJBR0ExVUVDaE1KVFdGbmFXTnNiM1ZrTVJvd0dBWURWUVFERXhGTllXZHBZMnh2ZFdRZ1VtOXZkQ0JEUVRBZQpGdzB5TlRFd01Ua3hNVE14TWpaYUZ3MHpOVEV3TVRjeE1UTXhNalphTURBeEVqQVFCZ05WQkFvVENVMWhaMmxqCmJHOTFaREVhTUJnR0ExVUVBeE1SVFdGbmFXTnNiM1ZrSUZKdmIzUWdRMEV3V1RBVEJnY3Foa2pPUFFJQkJnZ3EKaGtqT1BRTUJCd05DQUFUcVQxYjVUcEs5UUtnL3J2Z2REUEE3WnZLRWpEK1RaY201TURpY3l6cGNocnZVU1lubAorcDhaaUVULzdHSnpSdE5DQTVMQUkxL1I1UGc0UDM3bnpIcGlvMFV3UXpBT0JnTlZIUThCQWY4RUJBTUNBUVl3CkVnWURWUjBUQVFIL0JBZ3dCZ0VCL3dJQkFUQWRCZ05WSFE0RUZnUVVTMm9RTGVRMnlGZ2lVVTFuMElrRGRCd1kKcmhJd0NnWUlLb1pJemowRUF3SURTQUF3UlFJaEFQdFdIYTFFaHVzbWRoZHgwWVJzaVRGSU1qZU9ZdFlqK05XYgpZOWM2eDRRYkFpQURqSTVPY3hZdkNqeFR3cU1ERlNwcVc4RUFSQWVwK2xRTkxDUzZzT2VUUlE9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0t
   admissionReviewVersions: ["v1"]

@@ -4,9 +4,12 @@ use clap::{
     ArgAction::{Append, SetTrue},
     Args, Parser, Subcommand,
     builder::{StringValueParser, TypedValueParser},
+    value_parser,
 };
 use jsonptr::PointerBuf;
 use serde_json::Value;
+
+use crate::types::{Contains, K8SResource, MatchCombiner};
 
 #[derive(Subcommand, Debug)]
 #[command(rename_all = "lower")]
@@ -40,28 +43,28 @@ pub struct WebhookArguments {
     pub jp_value: Vec<Value>,
     #[arg(short('i'), long, action = SetTrue)]
     pub jp_ignore: Vec<bool>,
-    #[arg(short('r'), long, action = Append)]
-    pub jp_resource: Vec<String>,
+    #[arg(short('r'), long, action = Append, value_parser = value_parser!(K8SResource))]
+    pub jp_resource: Vec<K8SResource>,
     #[arg(short('p'), long, action = Append, value_parser = StringValueParser::new().try_map(|s| PointerBuf::parse(&s)))]
     pub jp_value_json_path: Vec<PointerBuf>,
-    #[arg(short('o'), long, action = Append, num_args = 0..=1, default_missing_value = "CONTAIN")]
-    pub jp_contains: Vec<String>,
+    #[arg(short('o'), long, action = Append, num_args = 0..=1, default_value = "EQUAL", default_missing_value = "CONTAIN", value_parser = value_parser!(Contains))]
+    pub jp_contains: Vec<Contains>,
 
     /// Mutation options, mirrors of validation.
     /// A Value, or a query to get value, or a resource and a query to get value, must be specified.
     /// If both validation and mutation values are specified, it means test first.
     #[arg(long, action = Append, value_parser = StringValueParser::new().try_map(|s| serde_json::from_str::<Value>(&s)))]
-    pub jpm_value: Vec<Value>,
+    pub jp_value_m: Vec<Value>,
     #[arg(long, action = Append)]
-    pub jpm_resource: Vec<String>,
+    pub jp_resource_m: Vec<String>,
     #[arg(long, action = Append, value_parser = StringValueParser::new().try_map(|s| PointerBuf::parse(&s)))]
-    pub jpm_value_json_path: Vec<PointerBuf>,
+    pub jp_value_m_json_path: Vec<PointerBuf>,
 
     /// How to combine the results of all matches specified by `-j`, `-v`, `-p`.
     /// Without this option, the results are combined by **any**.
     /// With this option, but not giving a value, the results are combined by **all**.
     /// With this option, and giving a _boolean\_expression_, the results are combined by the expression.
-    #[arg(short('A'), long, num_args = 0..=1, default_missing_value = "ALL")]
+    #[arg(short('A'), long, num_args = 0..=1, default_value = "ANY", default_missing_value = "ALL", value_parser = value_parser!(MatchCombiner))]
     pub match_combiner: Option<String>,
 
     /// Webhook service TLS certificate file path
