@@ -1,27 +1,146 @@
-use std::{collections::HashSet, net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use axum::{
-    Json, Router,
+    Router,
     body::Body,
-    extract::State,
     http::{Request, Response, StatusCode},
     middleware::{self, Next},
     routing::post,
 };
 use axum_extra::headers::{ContentType, HeaderMapExt};
 use axum_server::tls_rustls::RustlsConfig;
-use evalexpr::{ContextWithMutableVariables, DefaultNumericTypes, HashMapContext};
-use eyre::{Report, Result, eyre};
-use futures::future::join_all;
-use kube::{
-    Api, Client, Discovery,
-    api::{ApiResource, DynamicObject, GroupVersionKind},
-    core::admission::{AdmissionRequest, AdmissionResponse, AdmissionReview},
+use clap::ArgMatches;
+use evalexpr::build_operator_tree;
+use eyre::{Result, eyre};
+use macroweave::repeat;
+
+use crate::{helper::chunk_by, validation::validate};
+use crate::{
+    mutation::mutate,
+    types::{Contains, K8SResource, Match, MatchCombiner, MatchValue, TypeHelper},
 };
-use serde_json::Value;
 
-use crate::types::{Contains, Match, MatchCombiner, MatchValue, Webhook};
+pub struct Webhook {
+    pub matches: Vec<Arc<Match>>,
+    pub combiner: MatchCombiner,
+    pub tls_certificate_file_name: PathBuf,
+    pub tls_private_key_file_name: PathBuf,
+    pub name: String,
+}
+impl TryFrom<ArgMatches> for Webhook {
+    type Error = eyre::Report;
 
+    fn try_from(mut args: ArgMatches) -> Result<Self> {
+        repeat!((Key, Wrapper) in [
+            (json_path, TypeHelper::PointerBufS),
+            (jp_value, TypeHelper::Value),
+            (jp_ignore, TypeHelper::BoolI),
+            (jp_resource, TypeHelper::StringR),
+            (jp_value_json_path, TypeHelper::PointerBufD),
+            (jp_contains, TypeHelper::StringC),
+        ] {
+            let Key = (|key| {
+                let i = args.indices_of(key)?.collect::<Vec<_>>();
+                let k = args.remove_many(key)?;
+                Some(k.map(Wrapper).zip(i).collect::<Vec<_>>())
+            })("Key")
+            .unwrap_or_default();
+        });
+
+        let mut prepare = [
+            json_path,
+            jp_value,
+            jp_ignore,
+            jp_resource,
+            jp_value_json_path,
+            jp_contains,
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+        prepare.sort_by_key(|(_, i)| *i);
+        let matches = chunk_by(prepare, |(n, _)| !matches!(n, TypeHelper::PointerBufS(_)))
+            .into_iter()
+            .map(|match_data| {
+                let mut query = None;
+                let mut contains = Contains::Equal;
+                let mut value = None;
+                let mut resource = None;
+                let mut ignore = false;
+                let mut target_jp = None;
+                for (i, _) in match_data {
+                    match i {
+                        TypeHelper::PointerBufS(jp_query) => query = Some(jp_query),
+                        TypeHelper::PointerBufD(jp_query) => target_jp = Some(jp_query),
+                        TypeHelper::Value(v) => value = Some(v),
+                        TypeHelper::StringR(s) => resource = Some(K8SResource::try_from(s)?),
+                        TypeHelper::BoolI(b) => ignore = b,
+                        TypeHelper::StringC(s) => {
+                            if s.eq_ignore_ascii_case("CONTAIN") {
+                                contains = Contains::Contain;
+                            } else if s.eq_ignore_ascii_case("INTERSECT") {
+                                contains = Contains::Intersect;
+                            }
+                        }
+                        TypeHelper::ValueM(value) => todo!(),
+                        TypeHelper::StringRM(_) => todo!(),
+                        TypeHelper::PointerBufDM(pointer_buf) => todo!(),
+                    }
+                }
+
+                let query = query.ok_or_else(|| eyre!(""))?;
+                match (value, target_jp) {
+                    (None, None) => Ok(Match {
+                        json_path: query,
+                        value: None,
+                        contains,
+                    }
+                    .into()),
+                    (None, Some(v)) => Ok(Match {
+                        json_path: query,
+                        value: Some(MatchValue::JsonPath {
+                            json_path: v,
+                            resource,
+                            ignore_resource_not_exist: ignore,
+                        }),
+                        contains,
+                    }
+                    .into()),
+                    (Some(v), None) => Ok(Match {
+                        json_path: query,
+                        value: Some(MatchValue::Value { value: v }),
+                        contains,
+                    }
+                    .into()),
+                    (Some(_), Some(_)) => Err(eyre!("-v and -p cannot be used together")),
+                }
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(Self {
+            matches,
+            combiner: match args.remove_one::<&str>("match_combiner") {
+                None => MatchCombiner::Any,
+                Some(str) => {
+                    if str.eq_ignore_ascii_case("ALL") {
+                        MatchCombiner::All
+                    } else {
+                        MatchCombiner::BooleanExpression(build_operator_tree(str)?)
+                    }
+                }
+            },
+            tls_certificate_file_name: args
+                .remove_one("tls_certificate_file_name")
+                .ok_or_else(|| eyre!("No tls_certificate_file_name specified"))?,
+            tls_private_key_file_name: args
+                .remove_one("tls_private_key_file_name")
+                .ok_or_else(|| eyre!("No tls_private_key_file_name specified"))?,
+            name: args
+                .remove_one("name")
+                .ok_or_else(|| eyre!("No name specified"))?,
+        })
+    }
+}
 impl Webhook {
     pub async fn start(self) -> Result<()> {
         let tls_config = RustlsConfig::from_pem_file(
@@ -43,79 +162,6 @@ impl Webhook {
     }
 }
 
-async fn validate(
-    State(data): State<Arc<Webhook>>,
-    Json(mut admission_review): Json<Value>,
-) -> Result<Json<AdmissionReview<DynamicObject>>, String> {
-    let mut try_block = || {
-        let review =
-            serde_json::from_value::<AdmissionReview<DynamicObject>>(admission_review.clone())?;
-        let mut req = admission_review
-            .get_mut("request")
-            .ok_or_else(|| eyre!("Cannot get `request` object"))?
-            .take();
-        let obj = req
-            .get_mut("object")
-            .ok_or_else(|| eyre!("Cannot get `object` object"))?
-            .take();
-        let ar = AdmissionResponse::from(
-            &serde_json::from_value::<AdmissionRequest<DynamicObject>>(req)?,
-        );
-        Ok((review, obj, ar))
-    };
-    let (mut review, obj, mut ar) = try_block().map_err(|e: Report| e.to_string())?;
-
-    let results = data
-        .matches
-        .iter()
-        .map(async |m| match matching(m, &obj).await {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("{e:}");
-                false
-            }
-        })
-        .collect::<Vec<_>>();
-    let results: Vec<_> = join_all(results).await;
-    let mut results = results.iter();
-
-    let result = match &data.combiner {
-        MatchCombiner::Any => results.any(|r| *r),
-        MatchCombiner::All => results.all(|r| *r),
-        MatchCombiner::BooleanExpression(node) => {
-            let mut context = HashMapContext::<DefaultNumericTypes>::new();
-            let try_block = || {
-                for (i, r) in results.enumerate() {
-                    let i = i + 1; // Sugar. So cli argument starts from 1.
-                    context.set_value(format!("v{i}"), evalexpr::Value::from(*r))?;
-                }
-                let b = node.eval_boolean_with_context(&context)?;
-                Ok(b) as Result<bool>
-            };
-            match try_block() {
-                Ok(b) => b,
-                Err(e) => {
-                    eprintln!("{e}");
-                    false
-                }
-            }
-        }
-    };
-
-    if result {
-        ar.allowed = true;
-    } else {
-        ar = ar.deny(format!("fail json path validation {}", data.name));
-    }
-    review.response = Some(ar);
-    review.request = None;
-    Ok(Json(review))
-}
-
-async fn mutate() -> (StatusCode, &'static str) {
-    (StatusCode::NOT_IMPLEMENTED, "")
-}
-
 async fn content_type_json(
     request: Request<Body>,
     next: Next,
@@ -127,115 +173,4 @@ async fn content_type_json(
     } else {
         Err(StatusCode::UNSUPPORTED_MEDIA_TYPE)
     }
-}
-
-async fn matching(m: &Match, obj: &Value) -> Result<bool> {
-    let results = m.json_path.resolve(obj)?;
-
-    let check = |target_values: &Value| {
-        let result = match m.contains {
-            Contains::Equal => target_values == results,
-            Contains::Intersect if results.is_array() && target_values.is_array() => {
-                let src = results
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .collect::<HashSet<&Value>>();
-                let dst = target_values
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .collect::<HashSet<&Value>>();
-                !src.is_disjoint(&dst)
-            }
-            Contains::Contain if results.is_array() && target_values.is_array() => {
-                let src = results
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .collect::<HashSet<&Value>>();
-                let dst = target_values
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .collect::<HashSet<&Value>>();
-                src.is_subset(&dst) || src.is_superset(&dst)
-            }
-            Contains::Contain if results.is_array() => {
-                let src = results
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .collect::<HashSet<&Value>>();
-                src.contains(target_values)
-            }
-            Contains::Contain if target_values.is_array() => {
-                let dst = target_values
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .collect::<HashSet<&Value>>();
-                dst.contains(results)
-            }
-            Contains::Contain | Contains::Intersect => {
-                Err(eyre!("Source and target are not both list"))?
-            }
-        };
-        Ok(result) as Result<_>
-    };
-
-    let result = match &m.value {
-        Some(MatchValue::JsonPath {
-            json_path,
-            resource,
-            ignore_resource_not_exist,
-        }) => {
-            let ext_obj = if let Some(r) = resource {
-                let client = Client::try_default().await?;
-                // run_aggregated does not work for K3S.
-                // let dis = Discovery::new(client.clone()).run_aggregated().await?;
-                let dis = Discovery::new(client.clone()).run().await?;
-                let target_obj = if let Some(gvk) = dis.groups().find_map(|g| {
-                    g.resources_by_stability()
-                        .iter()
-                        .find(|(ar, _)| ar.kind.eq_ignore_ascii_case(&r.kind))
-                        .map(|(ar, _)| GroupVersionKind::gvk(g.name(), &ar.version, &ar.kind))
-                }) {
-                    eprintln!("{gvk:?}");
-                    let ar = ApiResource::from_gvk(&gvk);
-                    let api: Api<DynamicObject> = if let Some(ref ns) = r.namespace {
-                        Api::namespaced_with(client, ns, &ar)
-                    } else {
-                        Api::default_namespaced_with(client, &ar)
-                    };
-                    let dyn_obj = api.get_opt(&r.name).await?;
-                    dyn_obj.map(serde_json::to_value).transpose()?
-                } else {
-                    Err(eyre!(""))?;
-                    None
-                };
-                Some(target_obj)
-            } else {
-                None
-            };
-            match &ext_obj {
-                Some(None) if *ignore_resource_not_exist => true, // resource required, but not exist and ignore.
-                Some(None) => Err(eyre!(""))?, // resource required, but not exist.
-                Some(Some(ext_obj)) => {
-                    // checking value from resource object
-                    let o = json_path.resolve(ext_obj)?;
-                    check(o)?
-                }
-                None => {
-                    // checking value from this object
-                    let o = json_path.resolve(obj)?;
-                    check(o)?
-                }
-            }
-        }
-        Some(MatchValue::Value { value }) => check(value)?,
-        None => !results.is_null(),
-    };
-
-    Ok(result)
 }

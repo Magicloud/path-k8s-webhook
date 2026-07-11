@@ -1148,6 +1148,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
+name = "macroweave"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50ab787669b4105aad23153b64c43ba63499e90b3e9df0d5643cda24382d3dfe"
+dependencies = [
+ "proc-macro2",
+ "syn",
+]
+
+[[package]]
 name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1290,6 +1300,7 @@ dependencies = [
  "jsonptr",
  "k8s-openapi",
  "kube",
+ "macroweave",
  "mimalloc",
  "rustls",
  "serde_json",

@@ -12,7 +12,9 @@
 
 mod cli;
 mod helper;
+mod mutation;
 mod types;
+mod validation;
 mod webhook;
 
 use std::{process::exit, time::Duration};
@@ -22,7 +24,7 @@ use eyre::Result;
 use mimalloc::MiMalloc;
 use tokio::time::sleep;
 
-use crate::{cli::Cli, types::Webhook};
+use crate::{cli::Cli, webhook::Webhook};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;

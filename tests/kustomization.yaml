@@ -2,7 +2,7 @@ resources:
 - webhook.yaml
 
 images:
-- digest: sha256:17002aa8ee64450f00c69584a8d6d53c5f1b734084de7b866ff40ed38b48d885
+- digest: sha256:da6fa692bffb6269485aaba06af14318782987aeb1f067ae21a3be2846fcae9a
   name: registry.magicloud.lan/pkw
   newName: registry.magicloud.lan/pkw
 apiVersion: kustomize.config.k8s.io/v1beta1

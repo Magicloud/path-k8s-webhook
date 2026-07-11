@@ -47,6 +47,16 @@ pub struct WebhookArguments {
     #[arg(short('o'), long, action = Append, num_args = 0..=1, default_missing_value = "CONTAIN")]
     pub jp_contains: Vec<String>,
 
+    /// Mutation options, mirrors of validation.
+    /// A Value, or a query to get value, or a resource and a query to get value, must be specified.
+    /// If both validation and mutation values are specified, it means test first.
+    #[arg(long, action = Append, value_parser = StringValueParser::new().try_map(|s| serde_json::from_str::<Value>(&s)))]
+    pub jpm_value: Vec<Value>,
+    #[arg(long, action = Append)]
+    pub jpm_resource: Vec<String>,
+    #[arg(long, action = Append, value_parser = StringValueParser::new().try_map(|s| PointerBuf::parse(&s)))]
+    pub jpm_value_json_path: Vec<PointerBuf>,
+
     /// How to combine the results of all matches specified by `-j`, `-v`, `-p`.
     /// Without this option, the results are combined by **any**.
     /// With this option, but not giving a value, the results are combined by **all**.

@@ -61,9 +61,13 @@ spec:
           - -k
           - /tls/tls.key
           - -j
-          - /spec/tls/0/hosts
-          - -v
-          - "\"abc\""
+          - /spec/tls/0
+          - -i
+          - -r
+          - ingress:default/test
+          - -p
+          - /spec/tls/1
+          - -o
         ports:
         - containerPort: 443
           name: https

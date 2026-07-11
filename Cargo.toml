@@ -38,6 +38,7 @@ evalexpr = { version = "*" }
 itertools = { version = "*" }
 futures = { version = "*", features = ["alloc"] }
 serde_json = { version = "*" }
+macroweave = { version = "*" }
 # gateway-api = { version = "0.19" }
 # serde = { version = "1", features = ["derive"] }
 # serde_yaml = { version = "0.9.33" }
