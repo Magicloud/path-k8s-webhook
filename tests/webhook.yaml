@@ -56,6 +56,8 @@ spec:
           - webhook
           - -n
           - ingress-tls
+          - -d
+          - Ingress,Gateway
           - -c
           - /tls/tls.crt
           - -k
@@ -63,9 +65,9 @@ spec:
           - -j
           - /spec/rules/0/http/paths/0/pathType
           - -v
-          - ImplementationSpecific
+          - "\"ImplementationSpecific\""
           - --jp-value-m
-          - Prefix
+          - "\"Prefix\""
         ports:
         - containerPort: 443
           name: https
@@ -151,7 +153,7 @@ webhooks:
   - apiGroups:   ["*"]
     apiVersions: ["*"]
     operations:  ["CREATE", "UPDATE"]
-    resources:   ["*"]
+    resources:   ["ingresses", "gateways"]
     scope:       "*"
   clientConfig:
     service:

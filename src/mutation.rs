@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use axum::{Json, extract::State};
-use eyre::{Report, Result, eyre};
+use eyre::{Result, eyre};
 use kube::{api::DynamicObject, core::admission::AdmissionReview};
 use serde_json::Value;
 
 use crate::{
-    helper::{checking, fetch_resource, preprocess},
+    helper::{boilerplate, checking, fetch_resource},
     types::{Match, MatchValue},
     webhook::Webhook,
 };
@@ -15,21 +15,15 @@ pub async fn mutate(
     State(data): State<Arc<Webhook>>,
     Json(admission_review): Json<Value>,
 ) -> Result<Json<AdmissionReview<DynamicObject>>, String> {
-    let (mut review, obj, ar) = preprocess(admission_review).map_err(|e: Report| e.to_string())?;
+    boilerplate(&data.name, admission_review, async |obj, mut ar| {
+        let tests = checking(&data, &obj, false).await?.into_iter().all(|x| x);
 
-    let tests = checking(&data, &obj, false)
-        .await
-        .map_err(|e: Report| e.to_string())?
-        .into_iter()
-        .all(|x| x);
-
-    let tmp = ar.clone();
-    let mut target_obj = obj.clone();
-    let try_block = async || {
         if !tests {
-            Err(eyre!(""))?;
+            Err(eyre!("The incoming object failed testing"))?;
         }
 
+        let mut target_obj = obj.clone();
+        eprintln!("{:?}", data.matches);
         for m in &data.matches {
             let Match {
                 json_path,
@@ -46,7 +40,9 @@ pub async fn mutate(
                         json_path,
                     } => {
                         let ext_obj = if let Some(r) = resource {
-                            Some(fetch_resource(r).await?.ok_or(eyre!(""))?) // value to be from ext resource cannot be "not found"
+                            Some(fetch_resource(r).await?.ok_or(eyre!(
+                                "{r:?} does not exist, cannot use value from it to mutate."
+                            ))?) // value to be from ext resource cannot be "not found"
                         } else {
                             None
                         };
@@ -54,21 +50,16 @@ pub async fn mutate(
                         json_path.resolve(ext_obj)?.clone()
                     }
                 };
+                eprintln!("{final_value:?}");
                 json_path.assign(&mut target_obj, final_value)?;
             }
         }
 
         let p = json_patch::diff(&obj, &target_obj);
-        Ok(tmp.with_patch(p)?) as Result<_>
-    };
-    let ar = match try_block().await {
-        Ok(x) => x,
-        Err(e) => {
-            eprintln!("{e:?}");
-            ar.deny(format!("fail json path mutation on {}", data.name))
-        }
-    };
-    review.response = Some(ar);
-    review.request = None;
-    Ok(Json(review))
+        eprintln!("{p:?}");
+        ar = ar.with_patch(p)?;
+        //                     ar.deny()
+        Ok(ar)
+    })
+    .await
 }

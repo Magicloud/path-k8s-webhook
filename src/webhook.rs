@@ -46,7 +46,7 @@ impl TryFrom<ArgMatches> for Webhook {
                 let i = args.indices_of(key)?.collect::<Vec<_>>();
                 let k = args.remove_many(key)?;
                 Some(k.map(Wrapper).zip(i).collect::<Vec<_>>())
-            })("Key")
+            })(stringify!(Key))
             .unwrap_or_default();
         });
 
@@ -92,7 +92,7 @@ impl TryFrom<ArgMatches> for Webhook {
                     }
                 }
 
-                let query = query.ok_or_else(|| eyre!(""))?;
+                let query = query.ok_or_else(|| eyre!("There must be a json path to start"))?;
                 let mut m = Match {
                     json_path: query,
                     value: None,

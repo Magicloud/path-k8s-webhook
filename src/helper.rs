@@ -1,6 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, fmt::Debug, sync::Arc};
 
-use eyre::{Report, Result, eyre};
+use axum::Json;
+use eyre::{Result, eyre};
 use futures::future::join_all;
 use kube::{
     Api, Client, Discovery,
@@ -17,6 +18,7 @@ use crate::{
 pub fn chunk_by<T, F>(vec: Vec<T>, mut predicate: F) -> Vec<Vec<T>>
 where
     F: FnMut(&T) -> bool,
+    T: Debug,
 {
     let (mut result, last_chunk) =
         vec.into_iter()
@@ -57,31 +59,67 @@ pub async fn checking(
     Ok(results)
 }
 
-pub fn preprocess(
+pub async fn boilerplate<F>(
+    name: &str,
     mut admission_review: Value,
-) -> std::prelude::v1::Result<(AdmissionReview<DynamicObject>, Value, AdmissionResponse), Report> {
-    let review =
-        serde_json::from_value::<AdmissionReview<DynamicObject>>(admission_review.clone())?;
-    let mut req = admission_review
-        .get_mut("request")
-        .ok_or_else(|| eyre!("Cannot get `request` object"))?
-        .take();
-    let obj = req
-        .get_mut("object")
-        .ok_or_else(|| eyre!("Cannot get `object` object"))?
-        .take();
-    let ar = AdmissionResponse::from(&serde_json::from_value::<AdmissionRequest<DynamicObject>>(
-        req,
-    )?);
-    Ok((review, obj, ar))
+    f: F,
+) -> Result<Json<AdmissionReview<DynamicObject>>, String>
+where
+    F: AsyncFnOnce(Value, AdmissionResponse) -> Result<AdmissionResponse>,
+{
+    let mut try_block = || {
+        let review =
+            serde_json::from_value::<AdmissionReview<DynamicObject>>(admission_review.clone())?;
+        let mut req = admission_review
+            .get_mut("request")
+            .ok_or_else(|| eyre!("Cannot get `request` object"))?
+            .take();
+        let obj = req
+            .get_mut("object")
+            .ok_or_else(|| eyre!("Cannot get `object` object"))?
+            .take();
+        let ar = AdmissionResponse::from(
+            &serde_json::from_value::<AdmissionRequest<DynamicObject>>(req)?,
+        );
+        Ok((review, obj, ar)) as Result<(AdmissionReview<DynamicObject>, Value, AdmissionResponse)>
+    };
+    match try_block() {
+        Ok((mut review, obj, mut ar)) => {
+            let tmp = ar.clone();
+            let ar = match f(obj, tmp).await {
+                Ok(mut ar) => {
+                    ar.allowed = true;
+                    ar
+                }
+                Err(e) => {
+                    eprintln!("{e:?}");
+                    ar = ar.deny(format!("fail json path validation/mutation on {name}"));
+                    ar
+                }
+            };
+
+            review.response = Some(ar);
+            review.request = None;
+            Ok(Json(review))
+        }
+        Err(e) => {
+            eprintln!("{e:?}");
+            Err(e.to_string())
+        }
+    }
 }
 
 async fn matching(m: &Match, obj: &Value, ignore_containing: bool) -> Result<bool> {
     let results = m.json_path.resolve(obj)?;
 
     let check = |target_values: &Value| {
-        let result = (ignore_containing && target_values == results)
-            || match m.contains {
+        eprintln!("{results:?}");
+        eprintln!("{target_values:?}");
+
+        let result = if ignore_containing {
+            target_values == results
+        } else {
+            match m.contains {
                 Contains::Equal => target_values == results,
                 Contains::Intersect if results.is_array() && target_values.is_array() => {
                     let src = results
@@ -128,7 +166,8 @@ async fn matching(m: &Match, obj: &Value, ignore_containing: bool) -> Result<boo
                 Contains::Contain | Contains::Intersect => {
                     Err(eyre!("Source and target are not both list"))?
                 }
-            };
+            }
+        };
         Ok(result) as Result<_>
     };
 
@@ -139,14 +178,14 @@ async fn matching(m: &Match, obj: &Value, ignore_containing: bool) -> Result<boo
             ignore_resource_not_exist,
         }) => {
             let ext_obj = if let Some(r) = resource {
-                Some(fetch_resource(r).await?)
+                Some((r, fetch_resource(r).await?))
             } else {
                 None
             };
             match &ext_obj {
-                Some(None) if *ignore_resource_not_exist => true, // resource required, but not exist and ignore.
-                Some(None) => Err(eyre!(""))?, // resource required, but not exist.
-                Some(Some(ext_obj)) => {
+                Some((_, None)) if *ignore_resource_not_exist => true, // resource required, but not exist and ignore.
+                Some((r, None)) => Err(eyre!("{r:?} does not exist"))?, // resource required, but not exist.
+                Some((_, Some(ext_obj))) => {
                     // checking value from resource object
                     let o = json_path.resolve(ext_obj)?;
                     check(o)?
@@ -177,7 +216,7 @@ pub async fn fetch_resource(r: &K8SResource) -> Result<Option<Value>> {
                 .find(|(ar, _)| ar.kind.eq_ignore_ascii_case(&r.kind))
                 .map(|(ar, _)| GroupVersionKind::gvk(g.name(), &ar.version, &ar.kind))
         })
-        .ok_or(eyre!(""))?;
+        .ok_or_else(|| eyre!("{r:?} does not exist"))?;
     eprintln!("{gvk:?}");
     let ar = ApiResource::from_gvk(&gvk);
     let api: Api<DynamicObject> = if let Some(ref ns) = r.namespace {

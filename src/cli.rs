@@ -73,6 +73,7 @@ pub struct WebhookArguments {
     /// Webhook service TLS private key file path
     #[arg(short('k'), long)]
     pub tls_private_key_file_name: PathBuf,
+    /// Name for this validator/mutater. Just for logging and messages.
     #[arg(short('n'), long)]
     pub name: String,
 }

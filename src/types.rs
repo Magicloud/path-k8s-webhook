@@ -87,7 +87,7 @@ impl FromStr for Contains {
             "" | "EQUAL" => Ok(Self::Equal),
             "CONTAIN" => Ok(Self::Contain),
             "INTERSECT" => Ok(Self::Intersect),
-            _ => Err(eyre!("")),
+            _ => unimplemented!(),
         }
     }
 }
