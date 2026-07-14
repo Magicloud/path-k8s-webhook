@@ -39,6 +39,9 @@ pub struct WebhookArguments {
     /// Additionally, `-r` can be used with `-p`, to specify a K8S resource to query for values to compare. The format of `-r` value is "Kind:Namespace/Name". And `-i` to skip validation if the resource does not exist.
     #[arg(short('j'), long, required = true, action = Append, value_parser = StringValueParser::new().try_map(|s| PointerBuf::parse(&s)))]
     pub json_path: Vec<PointerBuf>,
+    #[arg(short('d'), long, action = Append, value_delimiter = ',')]
+    // interestingly how this works
+    pub jp_kinds: Vec<String>,
     #[arg(short('v'), long, action = Append, value_parser = StringValueParser::new().try_map(|s| serde_json::from_str::<Value>(&s)))]
     pub jp_value: Vec<Value>,
     #[arg(short('i'), long, action = SetTrue)]

@@ -6,18 +6,14 @@ use eyre::{Result, eyre};
 use kube::{api::DynamicObject, core::admission::AdmissionReview};
 use serde_json::Value;
 
-use crate::{
-    helper::{boilerplate, checking},
-    types::MatchCombiner,
-    webhook::Webhook,
-};
+use crate::{helper::boilerplate, types::MatchCombiner, webhook::Webhook};
 
 pub async fn validate(
     State(data): State<Arc<Webhook>>,
     Json(admission_review): Json<Value>,
 ) -> Result<Json<AdmissionReview<DynamicObject>>, String> {
-    boilerplate(&data.name, admission_review, async |obj, ar| {
-        let results = checking(&data, &obj, false).await?;
+    boilerplate(&data.name, admission_review, async |kind, obj, ar| {
+        let results = data.matches.checking(kind, obj, false).await?;
         let mut results = results.iter();
 
         let result = match &data.combiner {

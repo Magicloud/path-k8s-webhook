@@ -56,14 +56,14 @@ spec:
           - webhook
           - -n
           - ingress-tls
-          - -d
-          - Ingress,Gateway
           - -c
           - /tls/tls.crt
           - -k
           - /tls/tls.key
           - -j
           - /spec/rules/0/http/paths/0/pathType
+          - -d
+          - Ingress,Gateway
           - -v
           - "\"ImplementationSpecific\""
           - --jp-value-m
