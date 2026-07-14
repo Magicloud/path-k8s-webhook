@@ -40,13 +40,11 @@ itertools = { version = "*" }
 futures = { version = "*", features = ["alloc"] }
 serde_json = { version = "*" }
 macroweave = { version = "*" }
-# gateway-api = { version = "0.19" }
-# serde = { version = "1", features = ["derive"] }
-# serde_yaml = { version = "0.9.33" }
-# json-patch = { version = "4" }
-# tracing = { version = "0.1" }
-# tracing-error = { version = "0.2" }
-# tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+inotify = { version = "*" }
+crossfire = { version = "*" }
+# tracing = { version = "*" }
+# tracing-error = { version = "*" }
+# tracing-subscriber = { version = "*", features = ["env-filter"] }
 # tracing-opentelemetry = { version = "0.32" }
 # opentelemetry = { version = "0.31" }
 # opentelemetry_sdk = { version = "0.31" }
@@ -57,13 +55,8 @@ macroweave = { version = "*" }
 #     "grpc-tonic",
 # ] }
 # opentelemetry-stdout = { version = "0.31" }
-# smol = { version = "2" }
-# blocking = { version = "1" }
-# async-compat = { version = "0.2" }
-# actix-web = { version = "4", features = ["rustls-0_23"] }
 # rustls = { version = "0.23" }
 # aws-lc-rs = { version = "1.14.1" }
-# inotify = { version = "0.11" }
 # itertools = { version = "0.14" }
 # ouroboros = { version = "0.18" }
 # random_str = { version = "1" }

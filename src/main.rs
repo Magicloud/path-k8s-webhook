@@ -12,6 +12,7 @@
 
 mod cli;
 mod helper;
+mod k8s_renew_watch;
 mod mutation;
 mod types;
 mod validation;

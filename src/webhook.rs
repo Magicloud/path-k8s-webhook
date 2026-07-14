@@ -11,8 +11,10 @@ use axum_extra::headers::{ContentType, HeaderMapExt};
 use axum_server::tls_rustls::RustlsConfig;
 use clap::ArgMatches;
 use eyre::{OptionExt, Result};
+use tokio::spawn;
 
 use crate::{
+    k8s_renew_watch::MountFolderWatcher,
     mutation::mutate,
     types::{MatchCombiner, Matches},
     validation::validate,
@@ -51,6 +53,37 @@ impl Webhook {
             &self.tls_private_key_file_name,
         )
         .await?;
+
+        let x = self.tls_certificate_file_name.parent();
+        let y = self.tls_private_key_file_name.parent();
+        if x == y {
+            // this check is just that one less argument needed to be passed.
+            let cert_watcher = MountFolderWatcher {
+                mount_folders: vec![x.map(std::path::Path::to_path_buf).unwrap_or_default()].into(),
+            };
+            let reloader = tls_config.clone();
+            let x = Arc::new(self.tls_certificate_file_name.clone());
+            let y = Arc::new(self.tls_private_key_file_name.clone());
+            spawn(async move {
+                cert_watcher
+                    .run(move |msg| {
+                        eprintln!("{msg:?}");
+                        let reloader = reloader.clone();
+                        let x = x.clone();
+                        let y = y.clone();
+                        async move {
+                            reloader
+                                .reload_from_pem_file(x.as_ref(), y.as_ref())
+                                .await?;
+                            Ok(())
+                        }
+                    })
+                    .await
+            });
+        } else {
+            eprintln!("Cannot watch cert files for hot reload");
+        }
+
         let data = Arc::new(self);
         let app = Router::new()
             .route("/validate", post(validate))
