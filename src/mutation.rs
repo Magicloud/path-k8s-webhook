@@ -4,6 +4,7 @@ use axum::{Json, extract::State};
 use eyre::{OptionExt, Result, eyre};
 use kube::{api::DynamicObject, core::admission::AdmissionReview};
 use serde_json::Value;
+use tracing::debug;
 
 use crate::{
     helper::boilerplate,
@@ -28,7 +29,6 @@ pub async fn mutate(
         }
 
         let mut target_obj = obj.clone();
-        eprintln!("{:?}", data.matches.0);
         for m in &data.matches.0 {
             let Match {
                 json_path,
@@ -40,6 +40,11 @@ pub async fn mutate(
             if let Some(v) = value_to_be
                 && kinds.iter().any(|x| x == kind)
             {
+                let md = obj.get("metadata").unwrap_or_default();
+                let n = md.get("name").unwrap_or_default();
+                let ns = md.get("namespace").unwrap_or_default();
+                debug!("Updating {kind}:{ns}/{n}:{json_path} to {value_to_be:?}");
+
                 let final_value = match v {
                     MatchValue::Value { value } => value.clone(),
                     MatchValue::JsonPath {
@@ -58,15 +63,13 @@ pub async fn mutate(
                         json_path.resolve(ext_obj)?.clone()
                     }
                 };
-                eprintln!("{final_value:?}");
+                debug!("About to update to {final_value:?}");
                 json_path.assign(&mut target_obj, final_value)?;
             }
         }
 
         let p = json_patch::diff(obj, &target_obj);
-        eprintln!("{p:?}");
         ar = ar.with_patch(p)?;
-        //                     ar.deny()
         Ok(ar)
     })
     .await

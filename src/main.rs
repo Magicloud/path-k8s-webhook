@@ -18,12 +18,17 @@ mod types;
 mod validation;
 mod webhook;
 
-use std::{process::exit, time::Duration};
-
 use clap::CommandFactory;
 use eyre::Result;
 use mimalloc::MiMalloc;
-use tokio::time::sleep;
+use tracing::info;
+use tracing_error::ErrorLayer;
+use tracing_subscriber::{
+    EnvFilter, Layer,
+    fmt::{self, format::FmtSpan},
+    layer::SubscriberExt,
+    util::SubscriberInitExt,
+};
 
 use crate::{cli::Cli, webhook::Webhook};
 
@@ -38,16 +43,25 @@ async fn main() -> Result<()> {
 
     color_eyre::install()?;
 
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_span_events(FmtSpan::NONE)
+                .with_filter(EnvFilter::from_default_env()),
+        )
+        .with(ErrorLayer::default())
+        .try_init()?;
+
     let mut root_matches = Cli::command().get_matches();
 
     match root_matches.remove_subcommand() {
         Some((cmd, args)) if cmd == "webhook" => {
+            info!("Starting webhook server");
             let webhook = Webhook::try_from(args)?;
             webhook.start().await?;
         }
         _ => unimplemented!(),
     }
 
-    sleep(Duration::from_secs(2)).await;
-    exit(0);
+    Ok(())
 }

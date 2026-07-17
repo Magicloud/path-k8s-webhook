@@ -5,6 +5,7 @@ use evalexpr::{ContextWithMutableVariables, DefaultNumericTypes, HashMapContext}
 use eyre::{Result, eyre};
 use kube::{api::DynamicObject, core::admission::AdmissionReview};
 use serde_json::Value;
+use tracing::warn;
 
 use crate::{helper::boilerplate, types::MatchCombiner, webhook::Webhook};
 
@@ -32,7 +33,7 @@ pub async fn validate(
                 match try_block() {
                     Ok(b) => b,
                     Err(e) => {
-                        eprintln!("{e}");
+                        warn!("{e}");
                         false
                     }
                 }

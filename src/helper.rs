@@ -5,6 +5,7 @@ use kube::{
     core::admission::{AdmissionRequest, AdmissionResponse, AdmissionReview},
 };
 use serde_json::Value;
+use tracing::{info, warn};
 
 pub async fn boilerplate<F>(
     name: &str,
@@ -50,7 +51,7 @@ where
                     ar
                 }
                 Err(e) => {
-                    eprintln!("{e:?}");
+                    info!("{e:?}");
                     ar = ar.deny(format!("fail json path validation/mutation on {name}"));
                     ar
                 }
@@ -61,7 +62,7 @@ where
             Ok(Json(review))
         }
         Err(e) => {
-            eprintln!("{e:?}");
+            warn!("{e:?}");
             Err(e.to_string())
         }
     }

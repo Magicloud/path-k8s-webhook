@@ -12,6 +12,7 @@ use axum_server::tls_rustls::RustlsConfig;
 use clap::ArgMatches;
 use eyre::{OptionExt, Result};
 use tokio::spawn;
+use tracing::{info, warn};
 
 use crate::{
     k8s_renew_watch::MountFolderWatcher,
@@ -67,21 +68,23 @@ impl Webhook {
             spawn(async move {
                 cert_watcher
                     .run(move |msg| {
-                        eprintln!("{msg:?}");
+                        info!("Cert renewed. Got {msg:?}");
                         let reloader = reloader.clone();
                         let x = x.clone();
                         let y = y.clone();
                         async move {
-                            reloader
-                                .reload_from_pem_file(x.as_ref(), y.as_ref())
-                                .await?;
+                            if let Err(e) =
+                                reloader.reload_from_pem_file(x.as_ref(), y.as_ref()).await
+                            {
+                                warn!("Cert reload error: {e:?}");
+                            }
                             Ok(())
                         }
                     })
                     .await
             });
         } else {
-            eprintln!("Cannot watch cert files for hot reload");
+            info!("Cannot watch cert files for hot reload");
         }
 
         let data = Arc::new(self);

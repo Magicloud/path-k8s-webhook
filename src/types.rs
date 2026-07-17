@@ -11,6 +11,7 @@ use kube::{
 };
 use macroweave::repeat;
 use serde_json::Value;
+use tracing::{debug, warn};
 
 pub struct Matches(pub Vec<Arc<Match>>);
 impl Matches {
@@ -27,7 +28,7 @@ impl Matches {
                 async |m| match m.matching(kind, obj, ignore_containing).await {
                     Ok(b) => b,
                     Err(e) => {
-                        eprintln!("{e:}");
+                        warn!("{e:}");
                         false
                     }
                 },
@@ -85,7 +86,6 @@ impl TryFrom<&mut ArgMatches> for Matches {
             .chunk_by_value(|n| !matches!(n, TypeHelper::PointerBufS(_)))
             .into_iter()
             .map(|match_data| {
-                eprintln!("{match_data:?}");
                 let m = Match::try_from(match_data)?;
                 Ok(m.into())
             })
@@ -104,12 +104,22 @@ pub struct Match {
 }
 impl Match {
     pub async fn matching(&self, kind: &str, obj: &Value, ignore_containing: bool) -> Result<bool> {
-        // contains requires alloc for kind, as type is not the same.
+        // `contains` requires alloc for kind, as the types are not the same.
         if !self.kinds.iter().any(|x| x == kind) {
             return Ok(false);
         }
 
+        let md = obj.get("metadata").unwrap_or_default();
+        let n = md.get("name").unwrap_or_default();
+        let ns = md.get("namespace").unwrap_or_default();
+        debug!(
+            "Matching {kind}:{ns}/{n}:{} to {:?}",
+            self.json_path, self.value
+        );
+
         let results = self.json_path.resolve(obj)?;
+
+        debug!("Current value: {results:?}");
 
         let check = |target_values: &Value| {
             let result = if ignore_containing {
@@ -197,6 +207,7 @@ impl Match {
             None => !results.is_null(),
         };
 
+        debug!("Match result: {result}");
         Ok(result)
     }
 }
@@ -291,8 +302,8 @@ impl K8SResource {
                     .find(|(ar, _)| ar.kind.eq_ignore_ascii_case(&self.kind))
                     .map(|(ar, _)| GroupVersionKind::gvk(g.name(), &ar.version, &ar.kind))
             })
-            .ok_or_eyre(format!("{self:?} does not exist"))?;
-        eprintln!("{gvk:?}");
+            .ok_or_eyre(format!("{} does not exist", self.kind))?;
+        debug!("{gvk:?}");
         let ar = ApiResource::from_gvk(&gvk);
         let api: Api<DynamicObject> = if let Some(ref ns) = self.namespace {
             Api::namespaced_with(client, ns, &ar)
@@ -301,6 +312,9 @@ impl K8SResource {
         };
         let dyn_obj = api.get_opt(&self.name).await?;
         let target_obj = dyn_obj.map(serde_json::to_value).transpose()?;
+        if target_obj.is_none() {
+            debug!("Object {:?}/{} does not exist", self.namespace, self.name);
+        }
         Ok(target_obj)
     }
 }
