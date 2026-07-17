@@ -1,0 +1,47 @@
+version: '3'
+
+# output:
+#     group:
+#         begin: "==> [{{now | date \"15:04:05\"}}] Starting {{.TASK}}..."
+#         end: "==> Finished {{.TASK}}."
+tasks:
+    build:
+        sources:
+            - .cargo/**/*
+            - Cargo.*
+            - src/**/*
+            - Containerfile
+        generates:
+            - .task/build_task
+            - .task/image_sha256
+        cmds:
+            - sudo nerdctl build . -t registry.magicloud.lan/pkw:latest --iidfile=.task/image_sha256
+            - sudo nerdctl push registry.magicloud.lan/pkw:latest
+            - date > .task/build_task
+
+    deploy:
+        deps: [build]
+        dir: tests
+        sources:
+            - ../.task/build_task
+            - kustomization.yaml
+            - webhook.yaml
+        generates:
+            - ../.task/deploy_task
+        cmds:
+            - kustomize edit set image registry.magicloud.lan/pkw=registry.magicloud.lan/pkw@$(cat ../.task/image_sha256)
+            - kubectl apply -k .
+            - kubectl -ntest rollout status deployment/path-k8s-webhook --timeout=1m || kubectl -ntest logs $(kubectl -ntest get pods -l app=path-k8s-webhook -o jsonpath='{.items[?(@.status.containerStatuses[0].state.waiting.reason=="CrashLoopBackOff")].metadata.name}')
+            - date > ../.task/deploy_task
+            - sleep 60s
+
+    test:
+        deps: [deploy]
+        dir: tests
+        sources:
+            - ../.task/deploy_task
+            - test.yaml
+        cmds:
+            - kubectl delete -f test.yaml || true
+            - kubectl apply -f test.yaml || true
+            - kubectl -ntest logs deployment.apps/path-k8s-webhook || true

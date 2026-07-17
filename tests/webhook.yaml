@@ -2,38 +2,35 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: test
-# ---
-# apiVersion: rbac.authorization.k8s.io/v1
-# kind: ClusterRole
-# metadata:
-#   name: path-k8s-webhook
-# rules:
-# - apiGroups: [""]
-#   resources: ["namespaces"]
-#   verbs: ["list"]
-# - apiGroups: ["networking.k8s.io/v1"]
-#   resources: ["ingresses"]
-#   verbs: ["get"]
-# ---
-# apiVersion: v1
-# kind: ServiceAccount
-# metadata:
-#   name: path-k8s-webhook
-#   namespace: test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: path-k8s-webhook
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: path-k8s-webhook
+  namespace: test
 # automountServiceAccountToken: true
-# ---
-# apiVersion: rbac.authorization.k8s.io/v1
-# kind: ClusterRoleBinding
-# metadata:
-#   name: path-k8s-webhook
-# subjects:
-# - kind: ServiceAccount
-#   name: path-k8s-webhook
-#   namespace: test
-# roleRef:
-#   kind: ClusterRole
-#   name: path-k8s-webhook
-#   apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: path-k8s-webhook
+subjects:
+- kind: ServiceAccount
+  name: path-k8s-webhook
+  namespace: test
+roleRef:
+  kind: ClusterRole
+  name: path-k8s-webhook
+  apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -50,25 +47,38 @@ spec:
       labels:
         app: path-k8s-webhook
     spec:
-      # serviceAccountName: path-k8s-webhook
+      serviceAccountName: path-k8s-webhook
       # automountServiceAccountToken: true
       containers:
       - name: path-k8s-webhook
-        image: registry.magicloud.lan/pkw:latest@sha256:a3c3a46689aa95e264d61273d0ec0fb87620f0c206a3990e5856d36c376a2a94
+        image: registry.magicloud.lan/pkw:latest
         args:
           - webhook
+          - -n
+          - ingress-tls
           - -c
           - /tls/tls.crt
           - -k
           - /tls/tls.key
           - -j
-          - "$.spec.tls[0]"
+          - /spec/rules/0/http/paths/0/pathType
+          - -d
+          - Ingress,Gateway
+          - -v
+          - "\"ImplementationSpecific\""
+          - --jp-value-m
+          - "\"Prefix\""
         ports:
         - containerPort: 443
           name: https
         volumeMounts:
         - name: tls
           mountPath: /tls
+        resources:
+          requests:
+            memory: "1Gi"
+          limits:
+            memory: "2Gi"
         env:
         - name: RUST_LOG
           value: DEBUG
@@ -107,9 +117,33 @@ spec:
     protocol: TCP
     port: 443
     targetPort: https
+# ---
+# apiVersion: admissionregistration.k8s.io/v1
+# kind: ValidatingWebhookConfiguration
+# metadata:
+#   name: path-k8s-webhook
+#   namespace: test
+# webhooks:
+# - name: "path-k8s-webhook.magicloud.lan"
+#   rules:
+#   - apiGroups:   ["*"]
+#     apiVersions: ["*"]
+#     operations:  ["CREATE", "UPDATE"]
+#     resources:   ["ingresses"]
+#     scope:       "*"
+#   clientConfig:
+#     service:
+#       namespace: "test"
+#       name: "path-k8s-webhook"
+#       path: "/validate"
+#       port: 443
+#     caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJwRENDQVVxZ0F3SUJBZ0lSQUw5bUxNVnpXMStzTkpsTFlnY3hhN1F3Q2dZSUtvWkl6ajBFQXdJd01ERVMKTUJBR0ExVUVDaE1KVFdGbmFXTnNiM1ZrTVJvd0dBWURWUVFERXhGTllXZHBZMnh2ZFdRZ1VtOXZkQ0JEUVRBZQpGdzB5TlRFd01Ua3hNVE14TWpaYUZ3MHpOVEV3TVRjeE1UTXhNalphTURBeEVqQVFCZ05WQkFvVENVMWhaMmxqCmJHOTFaREVhTUJnR0ExVUVBeE1SVFdGbmFXTnNiM1ZrSUZKdmIzUWdRMEV3V1RBVEJnY3Foa2pPUFFJQkJnZ3EKaGtqT1BRTUJCd05DQUFUcVQxYjVUcEs5UUtnL3J2Z2REUEE3WnZLRWpEK1RaY201TURpY3l6cGNocnZVU1lubAorcDhaaUVULzdHSnpSdE5DQTVMQUkxL1I1UGc0UDM3bnpIcGlvMFV3UXpBT0JnTlZIUThCQWY4RUJBTUNBUVl3CkVnWURWUjBUQVFIL0JBZ3dCZ0VCL3dJQkFUQWRCZ05WSFE0RUZnUVVTMm9RTGVRMnlGZ2lVVTFuMElrRGRCd1kKcmhJd0NnWUlLb1pJemowRUF3SURTQUF3UlFJaEFQdFdIYTFFaHVzbWRoZHgwWVJzaVRGSU1qZU9ZdFlqK05XYgpZOWM2eDRRYkFpQURqSTVPY3hZdkNqeFR3cU1ERlNwcVc4RUFSQWVwK2xRTkxDUzZzT2VUUlE9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0t
+#   admissionReviewVersions: ["v1"]
+#   sideEffects: None
+#   timeoutSeconds: 5
 ---
 apiVersion: admissionregistration.k8s.io/v1
-kind: ValidatingWebhookConfiguration
+kind: MutatingWebhookConfiguration
 metadata:
   name: path-k8s-webhook
   namespace: test
@@ -119,13 +153,13 @@ webhooks:
   - apiGroups:   ["*"]
     apiVersions: ["*"]
     operations:  ["CREATE", "UPDATE"]
-    resources:   ["ingresses"]
+    resources:   ["ingresses", "gateways"]
     scope:       "*"
   clientConfig:
     service:
       namespace: "test"
       name: "path-k8s-webhook"
-      path: "/validate"
+      path: "/mutate"
       port: 443
     caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJwRENDQVVxZ0F3SUJBZ0lSQUw5bUxNVnpXMStzTkpsTFlnY3hhN1F3Q2dZSUtvWkl6ajBFQXdJd01ERVMKTUJBR0ExVUVDaE1KVFdGbmFXTnNiM1ZrTVJvd0dBWURWUVFERXhGTllXZHBZMnh2ZFdRZ1VtOXZkQ0JEUVRBZQpGdzB5TlRFd01Ua3hNVE14TWpaYUZ3MHpOVEV3TVRjeE1UTXhNalphTURBeEVqQVFCZ05WQkFvVENVMWhaMmxqCmJHOTFaREVhTUJnR0ExVUVBeE1SVFdGbmFXTnNiM1ZrSUZKdmIzUWdRMEV3V1RBVEJnY3Foa2pPUFFJQkJnZ3EKaGtqT1BRTUJCd05DQUFUcVQxYjVUcEs5UUtnL3J2Z2REUEE3WnZLRWpEK1RaY201TURpY3l6cGNocnZVU1lubAorcDhaaUVULzdHSnpSdE5DQTVMQUkxL1I1UGc0UDM3bnpIcGlvMFV3UXpBT0JnTlZIUThCQWY4RUJBTUNBUVl3CkVnWURWUjBUQVFIL0JBZ3dCZ0VCL3dJQkFUQWRCZ05WSFE0RUZnUVVTMm9RTGVRMnlGZ2lVVTFuMElrRGRCd1kKcmhJd0NnWUlLb1pJemowRUF3SURTQUF3UlFJaEFQdFdIYTFFaHVzbWRoZHgwWVJzaVRGSU1qZU9ZdFlqK05XYgpZOWM2eDRRYkFpQURqSTVPY3hZdkNqeFR3cU1ERlNwcVc4RUFSQWVwK2xRTkxDUzZzT2VUUlE9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0t
   admissionReviewVersions: ["v1"]
