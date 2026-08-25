@@ -30,13 +30,10 @@ pub async fn validate(
                     let b = node.eval_boolean_with_context(&context)?;
                     Ok(b) as Result<bool>
                 };
-                match try_block() {
-                    Ok(b) => b,
-                    Err(e) => {
-                        warn!("{e}");
-                        false
-                    }
-                }
+                try_block().unwrap_or_else(|e| {
+                    warn!("{e}");
+                    false
+                })
             }
         };
 
