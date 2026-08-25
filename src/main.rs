@@ -35,8 +35,7 @@ use crate::{cli::Cli, webhook::Webhook};
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("Cannot initialize AWS LC");
@@ -58,7 +57,7 @@ async fn main() -> Result<()> {
         Some((cmd, args)) if cmd == "webhook" => {
             info!("Starting webhook server");
             let webhook = Webhook::try_from(args)?;
-            webhook.start().await?;
+            webhook.start()?;
         }
         _ => unimplemented!(),
     }
