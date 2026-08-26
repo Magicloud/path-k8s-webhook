@@ -1,4 +1,4 @@
-use std::{collections::HashSet, str::FromStr, sync::Arc};
+use std::{collections::HashSet, str::FromStr, sync::Arc, vec::Vec};
 
 use clap::ArgMatches;
 use evalexpr::{Node, build_operator_tree};
@@ -62,7 +62,8 @@ impl TryFrom<&mut ArgMatches> for Matches {
             })(stringify!(Key))
             .unwrap_or_default();
         });
-        let mut prepare = [
+
+        let total = [
             json_path,
             jp_kinds,
             jp_value,
@@ -73,10 +74,13 @@ impl TryFrom<&mut ArgMatches> for Matches {
             jp_value_m,
             jp_resource_m,
             jp_value_m_json_path,
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+        ];
+        let len = total.iter().map(Vec::len).sum();
+        let mut prepare = total.into_iter().fold(Vec::with_capacity(len), |mut i, x| {
+            i.extend(x);
+            i
+        });
+
         prepare.sort_by_key(|(_, i)| *i);
         eprintln!("{prepare:?}");
         let matches = prepare

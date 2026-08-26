@@ -1,4 +1,4 @@
-// #![warn(clippy::cargo)]
+#![warn(clippy::cargo)]
 #![warn(clippy::complexity)]
 #![warn(clippy::correctness)]
 #![warn(clippy::nursery)]
@@ -7,13 +7,13 @@
 #![warn(clippy::style)]
 #![warn(clippy::suspicious)]
 // #![allow(clippy::future_not_send)]
-// #![allow(clippy::multiple_crate_versions)]
+#![allow(clippy::multiple_crate_versions)]
 // #![allow(clippy::wildcard_dependencies)]
 
 mod cli;
 mod helper;
-mod k8s_renew_watch;
 mod mutation;
+mod tls_cert_resolver;
 mod types;
 mod validation;
 mod webhook;
@@ -21,6 +21,7 @@ mod webhook;
 use clap::CommandFactory;
 use eyre::Result;
 use mimalloc::MiMalloc;
+use tokio::runtime::{Builder, LocalOptions};
 use tracing::info;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{
@@ -36,6 +37,14 @@ use crate::{cli::Cli, webhook::Webhook};
 static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() -> Result<()> {
+    let util_runtime = Builder::new_current_thread()
+        .enable_all()
+        .build_local(LocalOptions::default())?;
+    util_runtime.block_on(async_main())?;
+    Ok(())
+}
+
+async fn async_main() -> Result<()> {
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("Cannot initialize AWS LC");
@@ -52,15 +61,13 @@ fn main() -> Result<()> {
         .try_init()?;
 
     let mut root_matches = Cli::command().get_matches();
-
     match root_matches.remove_subcommand() {
         Some((cmd, args)) if cmd == "webhook" => {
             info!("Starting webhook server");
             let webhook = Webhook::try_from(args)?;
-            webhook.start()?;
+            webhook.start().await?;
         }
         _ => unimplemented!(),
     }
-
     Ok(())
 }

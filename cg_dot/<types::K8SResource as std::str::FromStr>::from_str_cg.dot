@@ -1,0 +1,143 @@
+digraph ConstraintGraph {
+    layout=neato;
+    overlap=false;
+    splines=true;
+    sep="+1.0";
+    rankdir=TB;
+    ranksep=1.8;
+    nodesep=0.8;
+    edge [len=2.0];
+    node [fontname="Fira Code"];
+
+    // Variable Nodes
+    subgraph cluster_vars {
+        rank=same;
+        "_14" [label="_14", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(*_1)" [label="(*_1)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_10" [label="_10", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(*_6)" [label="(*_6)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_2" [label="_2", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(*_11)" [label="(*_11)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_6" [label="_6", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(((_2 as Some).0: (&str, &str)).0: &str)" [label="(((_2 as Some).0: (&str, &str)).0: &str)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_7" [label="_7", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_19" [label="_19", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_21" [label="_21", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(*_5)" [label="(*_5)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_28" [label="_28", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(((_7 as Some).0: (&str, &str)).0: &str)" [label="(((_7 as Some).0: (&str, &str)).0: &str)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_18" [label="_18", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_25" [label="_25", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(*_10)" [label="(*_10)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_17" [label="_17", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_22" [label="_22", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(((_2 as Some).0: (&str, &str)).1: &str)" [label="(((_2 as Some).0: (&str, &str)).1: &str)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_16" [label="_16", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_26" [label="_26", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(((_7 as Some).0: (&str, &str)).1: &str)" [label="(((_7 as Some).0: (&str, &str)).1: &str)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_5" [label="_5", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_24" [label="_24", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_11" [label="_11", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_27" [label="_27", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_13" [label="_13", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_3" [label="_3", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_8" [label="_8", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+    }
+
+    // Operation Nodes
+    subgraph cluster_ops {
+        rank=same;
+        "op_0" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_1" [label="Call(DefId(2:17128 ~ core[27a8]::str::{impl#0}::split_once))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_2" [label="Call(DefId(2:17128 ~ core[27a8]::str::{impl#0}::split_once))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_3" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_4" [label="Call(DefId(2:17128 ~ core[27a8]::str::{impl#0}::split_once))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_5" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_6" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_7" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_8" [label="Call(DefId(2:17128 ~ core[27a8]::str::{impl#0}::split_once))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_9" [label="Call(DefId(2:17128 ~ core[27a8]::str::{impl#0}::split_once))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_10" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_11" [label="Call(DefId(2:17128 ~ core[27a8]::str::{impl#0}::split_once))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_12" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_13" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_14" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_15" [label="Call(DefId(3:8025 ~ alloc[da1d]::string::ToString::to_string))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_16" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_17" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_18" [label="Call(DefId(3:8025 ~ alloc[da1d]::string::ToString::to_string))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_19" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_20" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_21" [label="Call(DefId(3:8025 ~ alloc[da1d]::string::ToString::to_string))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_22" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_23" [label="Call(DefId(3:8025 ~ alloc[da1d]::string::ToString::to_string))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_24" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_25" [label="Call(DefId(3:8025 ~ alloc[da1d]::string::ToString::to_string))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_26" [label="Call(DefId(2:13812 ~ core[27a8]::fmt::{impl#6}::from_str))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_27" [label="Call(DefId(40:546 ~ eyre[b96c]::private::format_err))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_28" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+    }
+
+    // Definition Edges (op -> var)
+    "op_6" -> "(*_6)";
+    "op_12" -> "_11";
+    "op_2" -> "(((_2 as Some).0: (&str, &str)).0: &str)";
+    "op_19" -> "(*_11)";
+    "op_1" -> "_2";
+    "op_18" -> "_16";
+    "op_25" -> "_24";
+    "op_11" -> "(((_7 as Some).0: (&str, &str)).1: &str)";
+    "op_28" -> "_26";
+    "op_5" -> "_6";
+    "op_27" -> "_27";
+    "op_23" -> "_21";
+    "op_20" -> "_19";
+    "op_7" -> "_8";
+    "op_17" -> "_17";
+    "op_24" -> "_25";
+    "op_16" -> "(*_10)";
+    "op_26" -> "_28";
+    "op_14" -> "_14";
+    "op_22" -> "_22";
+    "op_15" -> "_13";
+    "op_10" -> "_10";
+    "op_4" -> "(((_2 as Some).0: (&str, &str)).1: &str)";
+    "op_8" -> "_7";
+    "op_9" -> "(((_7 as Some).0: (&str, &str)).0: &str)";
+    "op_21" -> "_18";
+    "op_13" -> "(*_5)";
+    "op_3" -> "_5";
+    "op_0" -> "_3";
+
+    // Use Edges (var -> op)
+    "(*_1)" -> "op_0";
+    "_25" -> "op_25";
+    "(*_6)" -> "op_7";
+    "(*_6)" -> "op_24";
+    "(((_7 as Some).0: (&str, &str)).0: &str)" -> "op_10";
+    "(((_7 as Some).0: (&str, &str)).0: &str)" -> "op_16";
+    "(*_10)" -> "op_17";
+    "_14" -> "op_15";
+    "(((_2 as Some).0: (&str, &str)).0: &str)" -> "op_3";
+    "(((_2 as Some).0: (&str, &str)).0: &str)" -> "op_13";
+    "_19" -> "op_21";
+    "(*_5)" -> "op_14";
+    "(*_5)" -> "op_22";
+    "_28" -> "op_27";
+    "(((_7 as Some).0: (&str, &str)).1: &str)" -> "op_12";
+    "(((_7 as Some).0: (&str, &str)).1: &str)" -> "op_19";
+    "_22" -> "op_23";
+    "(*_11)" -> "op_20";
+    "_8" -> "op_9";
+    "_8" -> "op_8";
+    "_8" -> "op_11";
+    "_3" -> "op_2";
+    "_3" -> "op_1";
+    "_3" -> "op_4";
+    "(((_2 as Some).0: (&str, &str)).1: &str)" -> "op_6";
+    "(((_2 as Some).0: (&str, &str)).1: &str)" -> "op_5";
+    "_27" -> "op_28";
+    "_17" -> "op_18";
+
+    // Symbolic Bound Edges (var -> op)
+}

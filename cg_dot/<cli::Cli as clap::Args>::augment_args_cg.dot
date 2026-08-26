@@ -1,0 +1,122 @@
+digraph ConstraintGraph {
+    layout=neato;
+    overlap=false;
+    splines=true;
+    sep="+1.0";
+    rankdir=TB;
+    ranksep=1.8;
+    nodesep=0.8;
+    edge [len=2.0];
+    node [fontname="Fira Code"];
+
+    // Variable Nodes
+    subgraph cluster_vars {
+        rank=same;
+        "_10" [label="_10", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_22" [label="_22", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_13" [label="_13", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_21" [label="_21", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_20" [label="_20", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_1" [label="_1", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_23" [label="_23", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_24" [label="_24", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_8" [label="_8", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_12" [label="_12", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_19" [label="_19", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_17" [label="_17", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_5" [label="_5", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_18" [label="_18", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_25" [label="_25", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_4" [label="_4", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_6" [label="_6", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_3" [label="_3", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_15" [label="_15", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_2" [label="_2", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_9" [label="_9", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_7" [label="_7", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_11" [label="_11", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_16" [label="_16", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_14" [label="_14", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_0" [label="_0", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+    }
+
+    // Operation Nodes
+    subgraph cluster_ops {
+        rank=same;
+        "op_0" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_1" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_2" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_3" [label="Call(DefId(21:444 ~ clap_builder[eb16]::builder::arg_group::{impl#0}::new))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_4" [label="Call(DefId(21:455 ~ clap_builder[eb16]::builder::arg_group::{impl#0}::multiple))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_5" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_6" [label="Call(DefId(21:450 ~ clap_builder[eb16]::builder::arg_group::{impl#0}::args))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_7" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_8" [label="Call(DefId(21:561 ~ clap_builder[eb16]::builder::command::{impl#0}::group))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_9" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_10" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_11" [label="Call(DefId(21:63 ~ clap_builder[eb16]::derive::Subcommand::augment_subcommands))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_12" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_13" [label="Call(DefId(21:706 ~ clap_builder[eb16]::builder::command::{impl#3}::subcommand_required))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_14" [label="Call(DefId(21:663 ~ clap_builder[eb16]::builder::command::{impl#2}::arg_required_else_help))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_15" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_16" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_17" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_18" [label="Call(DefId(21:644 ~ clap_builder[eb16]::builder::command::{impl#2}::version))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_19" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_20" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_21" [label="Call(DefId(21:632 ~ clap_builder[eb16]::builder::command::{impl#2}::about))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_22" [label="Φ (Phi)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_23" [label="Φ (Phi)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+    }
+
+    // Definition Edges (op -> var)
+    "op_19" -> "_19";
+    "op_20" -> "_18";
+    "op_22" -> "_24";
+    "op_14" -> "_11";
+    "op_16" -> "_17";
+    "op_23" -> "_25";
+    "op_6" -> "_4";
+    "op_2" -> "_3";
+    "op_12" -> "_13";
+    "op_9" -> "_23";
+    "op_15" -> "_15";
+    "op_8" -> "_2";
+    "op_4" -> "_5";
+    "op_18" -> "_14";
+    "op_21" -> "_0";
+    "op_11" -> "_9";
+    "op_3" -> "_6";
+    "op_13" -> "_12";
+    "op_17" -> "_16";
+    "op_0" -> "_20";
+    "op_7" -> "_22";
+    "op_5" -> "_7";
+    "op_1" -> "_21";
+    "op_10" -> "_10";
+
+    // Use Edges (var -> op)
+    "_1" -> "op_2";
+    "_11" -> "op_15";
+    "_4" -> "op_8";
+    "_3" -> "op_8";
+    "_7" -> "op_6";
+    "_23" -> "op_22";
+    "_12" -> "op_14";
+    "_5" -> "op_6";
+    "_10" -> "op_11";
+    "_25" -> "op_22";
+    "_14" -> "op_21";
+    "_13" -> "op_13";
+    "_15" -> "op_18";
+    "_8" -> "op_5";
+    "_22" -> "op_23";
+    "_16" -> "op_18";
+    "_18" -> "op_21";
+    "_6" -> "op_4";
+    "_21" -> "op_23";
+    "_9" -> "op_12";
+    "_2" -> "op_10";
+
+    // Symbolic Bound Edges (var -> op)
+}

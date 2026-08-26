@@ -1,0 +1,30 @@
+digraph ConstraintGraph {
+    layout=neato;
+    overlap=false;
+    splines=true;
+    sep="+1.0";
+    rankdir=TB;
+    ranksep=1.8;
+    nodesep=0.8;
+    edge [len=2.0];
+    node [fontname="Fira Code"];
+
+    // Variable Nodes
+    subgraph cluster_vars {
+        rank=same;
+        "_0" [label="_0", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+    }
+
+    // Operation Nodes
+    subgraph cluster_ops {
+        rank=same;
+        "op_0" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+    }
+
+    // Definition Edges (op -> var)
+    "op_0" -> "_0";
+
+    // Use Edges (var -> op)
+
+    // Symbolic Bound Edges (var -> op)
+}

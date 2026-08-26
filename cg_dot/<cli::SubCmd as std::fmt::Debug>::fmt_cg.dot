@@ -1,0 +1,66 @@
+digraph ConstraintGraph {
+    layout=neato;
+    overlap=false;
+    splines=true;
+    sep="+1.0";
+    rankdir=TB;
+    ranksep=1.8;
+    nodesep=0.8;
+    edge [len=2.0];
+    node [fontname="Fira Code"];
+
+    // Variable Nodes
+    subgraph cluster_vars {
+        rank=same;
+        "_7" [label="_7", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_8" [label="_8", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(*_6)" [label="(*_6)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(*_9)" [label="(*_9)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_5" [label="_5", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(((*_1) as Webhook).0: cli::WebhookArguments)" [label="(((*_1) as Webhook).0: cli::WebhookArguments)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_3" [label="_3", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "(*_2)" [label="(*_2)", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_4" [label="_4", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_6" [label="_6", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_9" [label="_9", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+        "_0" [label="_0", shape=ellipse, style=filled, fillcolor=lightblue, width=1.2, fixedsize=false];
+    }
+
+    // Operation Nodes
+    subgraph cluster_ops {
+        rank=same;
+        "op_0" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_1" [label="Ref(Mut { kind: TwoPhaseBorrow })", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_2" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_3" [label="Use", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_4" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_5" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_6" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_7" [label="Ref(Shared)", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+        "op_8" [label="Call(DefId(2:13895 ~ core[27a8]::fmt::{impl#12}::debug_tuple_field1_finish))", shape=box, style=filled, fillcolor=lightgrey, width=1.5, fixedsize=false];
+    }
+
+    // Definition Edges (op -> var)
+    "op_0" -> "_3";
+    "op_6" -> "(*_9)";
+    "op_3" -> "(*_6)";
+    "op_7" -> "_8";
+    "op_2" -> "_6";
+    "op_8" -> "_0";
+    "op_4" -> "_5";
+    "op_5" -> "_9";
+    "op_1" -> "_4";
+
+    // Use Edges (var -> op)
+    "(*_2)" -> "op_1";
+    "(*_6)" -> "op_4";
+    "(*_9)" -> "op_7";
+    "_4" -> "op_8";
+    "_7" -> "op_8";
+    "_5" -> "op_8";
+    "(((*_1) as Webhook).0: cli::WebhookArguments)" -> "op_0";
+    "_3" -> "op_5";
+    "_3" -> "op_6";
+
+    // Symbolic Bound Edges (var -> op)
+}

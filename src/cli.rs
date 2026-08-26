@@ -71,12 +71,9 @@ pub struct WebhookArguments {
     #[arg(short('A'), long, num_args = 0..=1, default_value = "ANY", default_missing_value = "ALL", value_parser = value_parser!(MatchCombiner))]
     pub match_combiner: Option<String>,
 
-    /// Webhook service TLS certificate file path
-    #[arg(short('c'), long)]
-    pub tls_certificate_file_name: PathBuf,
-    /// Webhook service TLS private key file path
-    #[arg(short('k'), long)]
-    pub tls_private_key_file_name: PathBuf,
+    /// Path containing webhook service TLS certificate file and private key file, cert manager style.
+    #[arg(short('t'), long)]
+    pub tls_folder: PathBuf,
     /// Name for this validator/mutater. Just for logging and messages.
     #[arg(short('n'), long)]
     pub name: String,

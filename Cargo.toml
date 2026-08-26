@@ -1,8 +1,8 @@
 [package]
 name = "path-k8s-webhook"
 edition = "2024"
-version = "2026.7.17"
-description = "Kubernetes AdmissionControl webhook to validate or mutate specified resource via JSON path"
+version = "2026.9.1"
+description = "Kubernetes AdmissionControl webhook to validate or mutate specified resource via JSON Ptr"
 license = "Apache-2.0"
 repository = "https://github.com/Magicloud/path-k8s-webhook"
 keywords = ["Kubernetes", "Webhook"]
@@ -18,30 +18,39 @@ opt-level = 3
 panic = "abort"
 
 [dependencies]
-mimalloc = { version = "*" }
-eyre = { version = "*" }
-color-eyre = { version = "*" }
-clap = { version = "*", features = ["derive"] }
-tokio = { version = "*", features = ["full"] }
-xitca-web = { version = "*", features = ["io-uring", "rustls", "json", "codegen", "tracing", "tracing-subscriber"] }
-rustls = { version = "*" }
-k8s-openapi = { version = "*", default-features = false, features = [
+mimalloc = { version = "0.1" }
+eyre = { version = "0.6" }
+color-eyre = { version = "0.6" }
+clap = { version = "4.6", features = ["derive"] }
+tokio = { version = "1.53", features = ["full"] }
+xitca-web = { version = "0.8", features = [
+    "io-uring",
+    "rustls",
+    "json",
+    "codegen",
+    "tracing",
+    "tracing-subscriber",
+] }
+rustls = { version = "0.23" }
+rustls-pemfile = { version = "2.2" }
+k8s-openapi = { version = "0.28", default-features = false, features = [
     "std",
     "earliest",
 ] }
-kube = { version = "*", features = ["admission", "client"] }
-jsonptr = { version = "*" }
-json-patch = { version = "*" }
-evalexpr = { version = "*" }
-itertools = { version = "*" }
-futures = { version = "*", features = ["alloc"] }
-serde_json = { version = "*" }
-macroweave = { version = "*" }
-inotify = { version = "*" }
-crossfire = { version = "*" }
-tracing = { version = "*" }
-tracing-error = { version = "*" }
-tracing-subscriber = { version = "*", features = ["env-filter"] }
+kube = { version = "4.2", features = ["admission", "client"] }
+jsonptr = { version = "0.8" }
+json-patch = { version = "4.2" }
+evalexpr = { version = "13.1" }
+itertools = { version = "0.15" }
+futures = { version = "0.3", features = ["alloc"] }
+serde_json = { version = "1.0" }
+macroweave = { version = "0.1" }
+inotify = { version = "0.11" }
+arc-swap = { version = "1.9" }
+crossfire = { version = "3.1" }
+tracing = { version = "0.1" }
+tracing-error = { version = "0.2" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # tracing-opentelemetry = { version = "0.32" }
 # opentelemetry = { version = "0.31" }
 # opentelemetry_sdk = { version = "0.31" }

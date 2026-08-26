@@ -1,14 +1,13 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use clap::ArgMatches;
 use eyre::{OptionExt, Result};
-use tokio::spawn;
-use tracing::{info, warn};
-use xitca_web::{codegen::State, handler::handler_service, route::post};
+use rustls::ServerConfig;
+use xitca_web::codegen::State;
 
 use crate::{
-    k8s_renew_watch::MountFolderWatcher,
     mutation::mutate,
+    tls_cert_resolver::TLSCertResolver,
     types::{MatchCombiner, Matches},
     validation::validate,
 };
@@ -17,8 +16,7 @@ use crate::{
 pub struct Webhook {
     pub matches: Matches,
     pub combiner: MatchCombiner,
-    pub tls_certificate_file_name: PathBuf,
-    pub tls_private_key_file_name: PathBuf,
+    pub tls_folder: PathBuf,
     pub name: String,
 }
 impl TryFrom<ArgMatches> for Webhook {
@@ -29,57 +27,23 @@ impl TryFrom<ArgMatches> for Webhook {
         Ok(Self {
             matches,
             combiner: args.remove_one::<MatchCombiner>("match_combiner").unwrap(), // unwrap is guaranteed by default_value
-            tls_certificate_file_name: args
-                .remove_one("tls_certificate_file_name")
-                .ok_or_eyre("No tls_certificate_file_name specified")?,
-            tls_private_key_file_name: args
-                .remove_one("tls_private_key_file_name")
-                .ok_or_eyre("No tls_private_key_file_name specified")?,
+            tls_folder: args
+                .remove_one("tls_folder")
+                .ok_or_eyre("No tls_folder specified")?,
             name: args.remove_one("name").ok_or_eyre("No name specified")?,
         })
     }
 }
 
 impl Webhook {
-    pub fn start(self) -> Result<()> {
-        // let tls_config = RustlsConfig::from_pem_file(
-        //     &self.tls_certificate_file_name,
-        //     &self.tls_private_key_file_name,
-        // )
-        // .await?;
-
-        // let x = self.tls_certificate_file_name.parent();
-        // let y = self.tls_private_key_file_name.parent();
-        // if x == y {
-        //     // this check is just that one less argument needed to be passed.
-        //     // TODO: watch the dir, find the certs. No filenames.
-        //     let cert_watcher = MountFolderWatcher {
-        //         mount_folders: vec![x.map(std::path::Path::to_path_buf).unwrap_or_default()].into(),
-        //     };
-        //     let reloader = tls_config.clone();
-        //     let x = Arc::new(self.tls_certificate_file_name.clone());
-        //     let y = Arc::new(self.tls_private_key_file_name.clone());
-        //     spawn(async move {
-        //         cert_watcher
-        //             .run(move |msg| {
-        //                 info!("Cert renewed. Got {msg:?}");
-        //                 let reloader = reloader.clone();
-        //                 let x = x.clone();
-        //                 let y = y.clone();
-        //                 async move {
-        //                     if let Err(e) =
-        //                         reloader.reload_from_pem_file(x.as_ref(), y.as_ref()).await
-        //                     {
-        //                         warn!("Cert reload error: {e:?}");
-        //                     }
-        //                     Ok(())
-        //                 }
-        //             })
-        //             .await
-        //     });
-        // } else {
-        //     info!("Cannot watch cert files for hot reload");
-        // }
+    pub async fn start(self) -> Result<()> {
+        // ca.crt tls.crt tls.key
+        let cert_resolver =
+            TLSCertResolver::new(self.tls_folder.clone(), "tls.crt", "tls.key").await?;
+        let tls_conf = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_cert_resolver(cert_resolver);
+        // .with_single_cert(certs, key)?;
 
         xitca_web::App::new()
             .with_state(Arc::new(self))
@@ -87,12 +51,9 @@ impl Webhook {
             .at_typed(mutate)
             .serve()
             .enable_io_uring()
-            .bind("0.0.0.0:443")?
+            .bind_rustls("0.0.0.0:443", tls_conf)?
             .run()
-            .wait()?;
-        // axum_server::bind_rustls(SocketAddr::from(([0, 0, 0, 0], 443)), tls_config)
-        //     .serve(app.into_make_service())
-        //     .await?;
+            .await?;
 
         Ok(())
     }
