@@ -6,12 +6,14 @@ use eyre::{OptionExt, Report, Result, eyre};
 use futures::future::join_all;
 use jsonptr::PointerBuf;
 use kube::{
-    Api, Client, Discovery,
-    api::{ApiResource, DynamicObject, GroupVersionKind},
+    Api, Client,
+    api::{ApiResource, DynamicObject},
 };
 use macroweave::repeat;
 use serde_json::Value;
 use tracing::{debug, warn};
+
+use crate::helper::kind_string_to_gvk;
 
 pub struct Matches(pub Vec<Arc<Match>>);
 impl Matches {
@@ -296,17 +298,7 @@ pub struct K8SResource {
 impl K8SResource {
     pub async fn fetch(&self) -> Result<Option<Value>> {
         let client = Client::try_default().await?;
-        // run_aggregated() does not work with K3S.
-        let dis = Discovery::new(client.clone()).run().await?;
-        let gvk = dis
-            .groups()
-            .find_map(|g| {
-                g.resources_by_stability()
-                    .iter()
-                    .find(|(ar, _)| ar.kind.eq_ignore_ascii_case(&self.kind))
-                    .map(|(ar, _)| GroupVersionKind::gvk(g.name(), &ar.version, &ar.kind))
-            })
-            .ok_or_eyre(format!("{} does not exist", self.kind))?;
+        let gvk = kind_string_to_gvk(&self.kind, client.clone()).await?;
         debug!("{gvk:?}");
         let ar = ApiResource::from_gvk(&gvk);
         let api: Api<DynamicObject> = if let Some(ref ns) = self.namespace {

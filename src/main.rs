@@ -6,9 +6,8 @@
 #![warn(clippy::perf)]
 #![warn(clippy::style)]
 #![warn(clippy::suspicious)]
-// #![allow(clippy::future_not_send)]
 #![allow(clippy::multiple_crate_versions)]
-// #![allow(clippy::wildcard_dependencies)]
+#![allow(clippy::missing_errors_doc)]
 
 mod cli;
 mod helper;
@@ -20,7 +19,6 @@ mod webhook;
 
 use clap::CommandFactory;
 use eyre::Result;
-use mimalloc::MiMalloc;
 use tokio::runtime::{Builder, LocalOptions};
 use tracing::info;
 use tracing_error::ErrorLayer;
@@ -34,7 +32,7 @@ use tracing_subscriber::{
 use crate::{cli::Cli, webhook::Webhook};
 
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() -> Result<()> {
     let util_runtime = Builder::new_current_thread()

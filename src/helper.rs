@@ -1,6 +1,7 @@
 use eyre::{OptionExt, Result};
 use kube::{
-    api::DynamicObject,
+    Client, Discovery,
+    api::{DynamicObject, GroupVersionKind},
     core::admission::{AdmissionRequest, AdmissionResponse, AdmissionReview},
 };
 use serde_json::Value;
@@ -49,4 +50,19 @@ where
     review.response = Some(ar);
     review.request = None;
     Ok(Json(review))
+}
+
+pub async fn kind_string_to_gvk(kind: &str, client: Client) -> Result<GroupVersionKind> {
+    // run_aggregated() does not work with K3S.
+    let dis = Discovery::new(client).run().await?;
+    let gvk = dis
+        .groups()
+        .find_map(|g| {
+            g.resources_by_stability()
+                .iter()
+                .find(|(ar, _)| ar.kind.eq_ignore_ascii_case(kind))
+                .map(|(ar, _)| GroupVersionKind::gvk(g.name(), &ar.version, &ar.kind))
+        })
+        .ok_or_eyre(format!("{kind} does not exist"))?;
+    Ok(gvk)
 }
