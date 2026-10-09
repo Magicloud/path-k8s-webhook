@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fmt::{Debug, Display},
     future::ready,
     io::Read,
@@ -9,14 +9,14 @@ use std::{
 };
 
 use async_drop::AsyncDrop;
-use async_result_ext::AsyncResultExt;
 use clap::Parser;
 use eyre::{OptionExt, Report, Result, eyre};
-use futures::{AsyncBufRead, AsyncBufReadExt, Stream, TryStreamExt, stream};
+use futures::{AsyncBufRead, AsyncBufReadExt, Stream, StreamExt, TryStreamExt, stream};
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, ReplicaSet},
         core::v1::{ContainerState, Namespace, Pod, Probe},
+        discovery::v1::EndpointSlice,
     },
     apimachinery::pkg::apis::meta::v1::{LabelSelector, LabelSelectorRequirement},
     serde::de::DeserializeOwned,
@@ -215,7 +215,33 @@ impl AsyncDrop for Guard<'_> {
     }
 }
 
-pub async fn patch_confirm(x: &Deployment, ns: &str, client: Client) -> Result<()> {
+pub async fn is_service_ready(ns: &str, client: Client) -> Result<bool> {
+    let deployments: Api<Deployment> = Api::namespaced(client.clone(), ns);
+    let pods: Api<Pod> = Api::namespaced(client.clone(), ns);
+    let endpointslices: Api<EndpointSlice> = Api::namespaced(client.clone(), ns);
+
+    let pod_names = deployments.get_current_pods("path-k8s-webhook").await?;
+    let pod_ips = stream::iter(pod_names)
+        .then(async |pn| pods.get_status(&pn).await)
+        .try_filter_map(|p| ready(Ok(p.status.and_then(|s| s.pod_ip))))
+        .try_collect::<Vec<_>>()
+        .await?;
+    let pod_ips = pod_ips.iter().collect::<HashSet<_>>();
+    let svc_ips = endpointslices
+        .list(&ListParams {
+            label_selector: Some("kubernetes.io/service-name=path-k8s-webhook".to_string()),
+            ..Default::default()
+        })
+        .await?;
+    let svc_ips = svc_ips
+        .iter()
+        .flat_map(|el| el.endpoints.iter().flat_map(|e| e.addresses.iter()))
+        .collect::<HashSet<_>>();
+
+    Ok(pod_ips.is_superset(&svc_ips))
+}
+
+pub async fn patch_confirm_pod(x: &Deployment, ns: &str, client: Client) -> Result<()> {
     // Not all containers have to have readiness
     // Once those are ready and others are running
     // The pod is ready
@@ -231,24 +257,32 @@ pub async fn patch_confirm(x: &Deployment, ns: &str, client: Client) -> Result<(
         .await?;
 
     wait_until_first_pod_change(&result_deployment, &deployments).await?;
-
-    let pod_template_hash =
-        get_current_pod_template_hash("path-k8s-webhook", ns, client.clone()).await?;
-    // dbg!(&pod_template_hash);
-
-    let pod: Api<Pod> = Api::namespaced(client.clone(), ns);
-
-    let pod_name = get_pod_name_from_template_hash(&pod_template_hash, &pod)
+    let pod_name = deployments
+        .get_current_pods("path-k8s-webhook")
         .await?
         .next()
         .expect("Cannot get pod matching the template");
-    // dbg!(&pod_name);
+    let pods: Api<Pod> = Api::namespaced(client.clone(), ns);
+
+    // dbg!(
+    //     pods.get(&pod_name).await?.spec.unwrap().containers[0]
+    //         .args
+    //         .as_ref()
+    //         .unwrap()
+    // );
+    // tokio::time::sleep(Duration::from_secs(5)).await;
+    // dbg!(
+    //     pods.get(&pod_name).await?.spec.unwrap().containers[0]
+    //         .args
+    //         .as_ref()
+    //         .unwrap()
+    // );
 
     if has_readiness {
         eprintln!("Not yet");
     } else {
         // streaming container names for log
-        let events = watch_object(pod.clone(), &pod_name)
+        let events = watch_object(pods.clone(), &pod_name)
             .map_err(eyre::Error::from)
             .try_filter_map(|x| {
                 let try_block = || {
@@ -265,11 +299,10 @@ pub async fn patch_confirm(x: &Deployment, ns: &str, client: Client) -> Result<(
             })
             .try_flatten()
             .and_then(async |cs| {
-                eprintln!("Got event");
                 let ret = ContainerStatus::from(&cs);
                 if ret == ContainerStatus::Crashing {
                     eprintln!(">>> Pod log ===");
-                    let mut logs = pod
+                    let mut logs = pods
                         .log_stream(
                             &pod_name,
                             &LogParams {
@@ -285,7 +318,7 @@ pub async fn patch_confirm(x: &Deployment, ns: &str, client: Client) -> Result<(
                     eprintln!("<<< Pod log ===");
                 } else if ret == ContainerStatus::Terminated {
                     eprintln!(">>> Pod log ===");
-                    let mut logs = pod
+                    let mut logs = pods
                         .log_stream(&pod_name, &LogParams::default())
                         .await?
                         .lines();
@@ -330,9 +363,9 @@ pub async fn patch_confirm(x: &Deployment, ns: &str, client: Client) -> Result<(
 }
 
 pub async fn get_pod_name_from_template_hash(
-    template_hash: &str,
-    pod: &Api<Pod>,
-) -> Result<impl Iterator<Item = String>> {
+    template_hash: String,
+    pod: Api<Pod>,
+) -> Result<impl Iterator<Item = String>, kube::Error> {
     let p = pod
         .list(&ListParams {
             label_selector: Some(format!(
@@ -363,7 +396,7 @@ pub async fn get_current_pod_template_hash(
     deployment_name: &str,
     namespace: &str,
     client: Client,
-) -> Result<String> {
+) -> Result<String, kube::Error> {
     let deployment: Api<Deployment> = Api::namespaced(client.clone(), namespace);
     let md = deployment.get_metadata(deployment_name).await?;
     let rev = md
@@ -488,6 +521,7 @@ pub fn do_the_work(
     test: &Test<'_>,
     namespace: &str,
     client: &Client,
+    show_log: bool,
 ) -> Result<(), Failed> {
     LocalRuntime::new()?.block_on(async {
         let args = args.0;
@@ -500,47 +534,66 @@ pub fn do_the_work(
                 .collect();
         }
 
-        // let deployment_name = webhook.name_any();
-        patch_confirm(webhook, namespace, client.clone()).await?;
+        let deployment_name = webhook.name_any();
+        patch_confirm_pod(webhook, namespace, client.clone()).await?;
+        while !is_service_ready(namespace, client.clone()).await? {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
 
-        // let deployments: Api<Deployment> = Api::namespaced(client.clone(), namespace);
+        let deployments: Api<Deployment> = Api::namespaced(client.clone(), namespace);
         let run_test = async |test| {
-            let ret = create_many_in_namespace(test, namespace, client.clone())
-                .await
-                .inspect_err(|(e, _)| eprintln!("{e:?}"))
-                .async_and_then(async |()| {
-                    // let lp = LogParams::default();
-                    eprintln!(">>> Pod log ===");
-                    // let mut logs = deployments
-                    //     .log_stream_ext(&deployment_name, &lp)
-                    //     .await
-                    //     .map_err(|e| (e.into(), vec![]))?
-                    //     .lines();
-                    // while let Some(line) = logs.try_next().await.map_err(|e| (e.into(), vec![]))? {
-                    //     eprintln!("{line}");
-                    // }
-                    eprintln!("<<< Pod log ===");
-                    Ok(())
-                })
-                .await;
-
+            let ret = create_many_in_namespace(test, namespace, client.clone()).await;
             delete_many_in_namespace_force(test, namespace, client.clone()).await;
-
             ret
         };
-        eprintln!("should pass");
-        let r = run_test(&test.pass).await;
-        assert!(r.is_ok(), "Tests should pass failed\n{}", r.unwrap_err().0);
 
-        eprintln!("should fail");
-        assert!(
-            run_test(&test.fail).await.is_err(),
-            "Tests should fail passed"
-        );
+        if !test.pass.is_empty() {
+            eprintln!("should pass");
+            let r = run_test(&test.pass).await;
+            if show_log {
+                eprintln!(">>> Pod log ===");
+                let lp = LogParams::default();
+                let mut logs = deployments
+                    .log_stream_ext(&deployment_name, &lp)
+                    .await?
+                    .lines();
+                while let Some(line) = logs.try_next().await? {
+                    eprintln!("{line}");
+                }
+                eprintln!("<<< Pod log ===");
+            }
+            assert!(
+                r.is_ok(),
+                "Tests should pass failed for \n{}",
+                r.unwrap_err().0
+            );
+        }
+
+        if !test.fail.is_empty() {
+            eprintln!("should fail");
+            let r = run_test(&test.fail).await;
+            if show_log {
+                eprintln!(">>> Pod log ===");
+                let lp = LogParams::default();
+                let mut logs = deployments
+                    .log_stream_ext(&deployment_name, &lp)
+                    .await?
+                    .lines();
+                while let Some(line) = logs.try_next().await? {
+                    eprintln!("{line}");
+                }
+                eprintln!("<<< Pod log ===");
+            }
+            assert!(r.is_err(), "Tests should fail passed");
+        }
+
         Ok(())
     })
 }
 
+pub type Infra = Vec<DynamicObject>;
+pub type WrappedDeployment = Arc<Pin<Box<Deployment>>>;
+pub type ArgsPtr = SingleThreadMutPtr<Vec<String>>;
 /// .
 ///
 /// # Panics
@@ -550,20 +603,13 @@ pub fn do_the_work(
 /// # Errors
 ///
 /// This function will return an error if .
-pub fn prepare_infra(
-    image_sha256: &str,
-) -> Result<(
-    Vec<DynamicObject>,
-    Arc<Pin<Box<Deployment>>>,
-    SingleThreadMutPtr<Vec<String>>,
-)> {
+pub fn prepare_infra(image_sha256: &str) -> Result<(Infra, WrappedDeployment, ArgsPtr)> {
     let infra_file = include_bytes!("../infra.yaml");
     let infra = read_to_dynamic_objects(infra_file.as_slice())?;
     let webhook: Deployment = infra
         .iter()
         .find_map(|d_o| {
-            if HumanReadableId::try_from(d_o).unwrap().to_string()
-                == "Deployment test/path-k8s-webhook"
+            if HumanReadableId::try_from(d_o).unwrap().to_string() == "Deployment /path-k8s-webhook"
             {
                 Some(serde_yaml_ng::to_value(d_o).and_then(serde_yaml_ng::from_value))
             } else {
@@ -622,6 +668,19 @@ pub trait ApiExt {
         name: &str,
         lp: &LogParams,
     ) -> Result<impl AsyncBufRead, kube::Error>;
+    // async fn exec_ext<I, T>(
+    //     &self,
+    //     name: &str,
+    //     command: I,
+    //     ap: &AttachParams,
+    // ) -> Result<AttachedProcess, kube::Error>
+    // where
+    //     I: IntoIterator<Item = T> + Debug,
+    //     T: Into<String>;
+    async fn get_current_pods(
+        &self,
+        name: &str,
+    ) -> Result<impl Iterator<Item = String>, kube::Error>;
 }
 impl ApiExt for Api<Deployment> {
     async fn log_stream_ext(
@@ -652,8 +711,56 @@ impl ApiExt for Api<Deployment> {
             .into(),
         ))?;
 
-        pods.log_stream(first_pod.metadata.name.as_ref().unwrap(), lp)
-            .await
+        pods.log_stream(&first_pod.name_any(), lp).await
+    }
+
+    // async fn exec_ext<I, T>(
+    //     &self,
+    //     name: &str,
+    //     command: I,
+    //     ap: &AttachParams,
+    // ) -> Result<AttachedProcess, kube::Error>
+    // where
+    //     I: IntoIterator<Item = T> + Debug,
+    //     T: Into<String>,
+    // {
+    //     let client = self.clone().into_client();
+    //     let ns = self.namespace().expect("");
+    //     let pods: Api<Pod> = Api::namespaced(client, ns);
+
+    //     let deployment = self.get(name).await?;
+    //     let label_selector = deployment.spec.map(|s| s.selector.to_k8s_label_selector());
+    //     dbg!(&label_selector);
+
+    //     let first_pod = pods
+    //         .list_metadata(&ListParams {
+    //             label_selector,
+    //             ..Default::default()
+    //         })
+    //         .await?;
+    //     let first_pod = first_pod.iter().next().ok_or(kube::Error::Api(
+    //         kube::error::Status {
+    //             code: 404,
+    //             reason: reason::NOT_FOUND.to_string(),
+    //             ..Default::default()
+    //         }
+    //         .into(),
+    //     ))?;
+
+    //     pods.exec(&first_pod.name_any(), command, ap).await
+    // }
+
+    async fn get_current_pods(
+        &self,
+        name: &str,
+    ) -> Result<impl Iterator<Item = String>, kube::Error> {
+        let client = self.clone().into_client();
+        let ns = self.namespace().expect("msg");
+        let pods: Api<Pod> = Api::namespaced(client.clone(), ns);
+
+        let pod_template_hash = get_current_pod_template_hash(name, ns, client.clone()).await?;
+
+        get_pod_name_from_template_hash(pod_template_hash, pods).await
     }
 }
 
@@ -710,4 +817,41 @@ impl ToK8SLabelSelector for LabelSelector {
         .collect::<Vec<_>>()
         .join(",")
     }
+}
+
+pub fn regulate_infra<'a>(
+    infra: impl IntoIterator<Item = &'a mut DynamicObject>,
+    namespace: &str,
+) -> Option<()> {
+    for d_o in infra {
+        match d_o.types.as_ref()?.kind.to_ascii_uppercase().as_str() {
+            "CLUSTERROLEBINDING" => {
+                d_o.data["subjects"]
+                    .as_array_mut()?
+                    .iter_mut()
+                    .for_each(|s| s["namespace"] = namespace.into());
+            }
+            "DEPLOYMENT" => {
+                d_o.data["spec"]["template"]["spec"]["volumes"].as_array_mut()?.iter_mut().for_each(|v| {
+                    if let Some(csi) = v.get_mut("csi")
+                    && let Some(vas) = csi.get_mut("volumeAttributes")
+                    && let Some(v) = vas.get_mut("csi.cert-manager.io/dns-names") {
+                        *v = format!("path-k8s-webhook.{namespace}.svc,path-k8s-webhook.{namespace}.svc.cluster.local").into();
+                    }
+                });
+            }
+            "VALIDATINGWEBHOOKCONFIGURATION" => {
+                d_o.data["webhooks"]
+                    .as_array_mut()?
+                    .iter_mut()
+                    .for_each(|w| {
+                        w["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"] =
+                            namespace.into();
+                        w["clientConfig"]["service"]["namespace"] = namespace.into();
+                    });
+            }
+            _ => (),
+        }
+    }
+    Some(())
 }

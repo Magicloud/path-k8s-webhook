@@ -75,7 +75,7 @@ yaml-split = { version = "0.4" }
 #async-safe-defer = { version = "*" }
 #guarden = { version = "*" }
 async-drop = { version = "0.1" }
-kube = { version = "4.2", features = ["runtime"] }
+kube = { version = "4.2", features = ["runtime", "ws"] }
 serde_json_diff = { version = "0.2" }
 libtest-mimic = { version = "0.8" }
 async-result-ext = { version = "0.1" }

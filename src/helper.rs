@@ -10,11 +10,12 @@ use kube::{
     core::admission::{AdmissionRequest, AdmissionResponse, AdmissionReview},
 };
 use serde_json::Value;
-use tracing::info;
+use tracing::{info, instrument};
 use xitca_web::handler::json::Json;
 
 use crate::DISCOVERY_CACHE;
 
+#[instrument(skip_all)]
 pub async fn boilerplate<F>(
     name: &str,
     mut admission_review: Value,
@@ -59,6 +60,7 @@ where
     Ok(Json(review))
 }
 
+#[instrument(skip_all)]
 pub async fn kind_string_to_gvk(kind: &str, client: Client) -> Result<GroupVersionKind> {
     let mut ts_d = DISCOVERY_CACHE.load();
     let ts = ts_d.0;

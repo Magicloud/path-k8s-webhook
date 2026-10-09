@@ -18,6 +18,7 @@ use eyre::eyre;
 use kube::api::DynamicObject;
 use kube::{Client, Discovery};
 use libtest_mimic::Trial;
+use serde_json::json;
 use tokio::sync::{OnceCell, SetError};
 // use tracing::level_filters::LevelFilter;
 // use tracing_error::ErrorLayer;
@@ -53,7 +54,8 @@ async fn main() -> Result<()> {
         SetError::InitializingError(_) => eyre!("DISCOVERY InitializingError"),
     })?;
 
-    let (infra, webhook, args) = prepare_infra(&it_args.image_sha256)?;
+    let (mut infra, webhook, args) = prepare_infra(&it_args.image_sha256)?;
+    regulate_infra(&mut infra, &it_args.namespace).expect("msg");
 
     let created_namespace = confirm_namespace(&it_args.namespace, client.clone()).await?;
 
@@ -73,10 +75,41 @@ async fn main() -> Result<()> {
     }
     eprintln!("Created infra");
 
-    let test_file = include_str!("test.yaml");
-    let pass: DynamicObject = serde_yaml_ng::from_str(test_file)?;
+    let mut margs = it_args.mimic_args.clone();
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            eprintln!("Interupted");
+        }
+        conclusion = tokio::task::spawn_blocking(move || {
+            margs.test_threads = Some(1);
+            libtest_mimic::run(&margs, tests().map(|t| {
+        Trial::test(t.name, {
+            let x = webhook.clone();
+            let y = client.clone();
+            let z = ns.clone();
+            let a = args.clone();
+            move || do_the_work(x.as_ref(), &a, &t, z.as_ref(), &y, true)
+        })
+    })
+    .collect())
+        }) => {
+            match conclusion {
+                Ok(c) => eprintln!("{c:?}"),
+                Err(e) => eprintln!("{e:?}"),
+            }
+        }
+    }
 
-    let tests = [
+    drop(x);
+    Ok(())
+}
+
+#[allow(clippy::too_many_lines)]
+fn tests() -> impl Iterator<Item = Test<'static>> {
+    let test_file = include_str!("test.yaml");
+    let pass: DynamicObject = serde_yaml_ng::from_str(test_file).expect("Cannot load test.yaml");
+
+    [
         {
             let mut fail = pass.clone();
             fail.data["spec"]["selector"]["app"] = "not-whoami".into();
@@ -134,11 +167,11 @@ async fn main() -> Result<()> {
                 r"apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: match-resource
-  namespace: test
+    name: match-resource
 data:
-  app: whoami",
-            )?;
+    app: whoami",
+            )
+            .expect("Cannot load testing ConfigMap");
             let mut fail = pass.clone();
             fail.data["spec"]["selector"]["app"] = "not-whoami".into();
             Test {
@@ -153,39 +186,144 @@ data:
                     "-p",
                     "/data/app",
                 ],
-                pass: vec![p.clone(), pass],
+                pass: vec![p.clone(), pass.clone()],
                 fail: vec![p, fail],
+            }
+        },
+        {
+            Test {
+                name: "match not-existing resource",
+                argument: vec![
+                    "-j",
+                    "/spec/selector/app",
+                    "-d",
+                    "Service",
+                    "-r",
+                    "ConfigMap:test/match-resource",
+                    "-p",
+                    "/data/app",
+                    "-i",
+                ],
+                pass: vec![pass.clone()],
+                fail: vec![],
+            }
+        },
+        {
+            let mut fail = pass.clone();
+            fail.data["spec"]["loadBalancerSourceRanges"] = json!(["1.1.1.1/32", "3.3.3.3/32"]);
+            Test {
+                name: "source array equals target array",
+                argument: vec![
+                    "-j",
+                    "/spec/loadBalancerSourceRanges",
+                    "-d",
+                    "Service",
+                    "-v",
+                    "[\"1.1.1.1/32\", \"2.2.2.2/32\", \"3.3.3.3/32\"]",
+                ],
+                pass: vec![pass.clone()],
+                fail: vec![fail],
+            }
+        },
+        {
+            let mut fail = pass.clone();
+            fail.data["spec"]["loadBalancerSourceRanges"] = json!(["1.1.1.1/32", "3.3.3.3/32"]);
+            Test {
+                name: "source array contains target value",
+                argument: vec![
+                    "-j",
+                    "/spec/loadBalancerSourceRanges",
+                    "-d",
+                    "Service",
+                    "-v",
+                    "\"2.2.2.2/32\"",
+                    "-o",
+                ],
+                pass: vec![pass.clone()],
+                fail: vec![fail],
+            }
+        },
+        {
+            let mut fail = pass.clone();
+            fail.data["spec"]["loadBalancerSourceRanges"] = json!(["3.3.3.3/32"]);
+            Test {
+                name: "source array contains target array",
+                argument: vec![
+                    "-j",
+                    "/spec/loadBalancerSourceRanges",
+                    "-d",
+                    "Service",
+                    "-v",
+                    "[\"2.2.2.2/32\", \"3.3.3.3/32\"]",
+                    "-o",
+                ],
+                pass: vec![pass.clone()],
+                fail: vec![fail],
+            }
+        },
+        {
+            let mut fail = pass.clone();
+            fail.data["spec"]["selector"]["app"] = "abcdefg".into();
+            Test {
+                name: "source value subsumes target array",
+                argument: vec![
+                    "-j",
+                    "/spec/selector/app",
+                    "-d",
+                    "Service",
+                    "-v",
+                    "[\"not-whoami\", \"whoami\"]",
+                    "-o",
+                    "subsume",
+                ],
+                pass: vec![pass.clone()],
+                fail: vec![fail],
+            }
+        },
+        {
+            let mut fail = pass.clone();
+            fail.data["spec"]["loadBalancerSourceRanges"] = json!([
+                "5.5.5.5/32",
+                "1.1.1.1/32",
+                "2.2.2.2/32",
+                "3.3.3.3/32",
+                "4.4.4.4/32"
+            ]);
+            Test {
+                name: "source array subsumes target array",
+                argument: vec![
+                    "-j",
+                    "/spec/loadBalancerSourceRanges",
+                    "-d",
+                    "Service",
+                    "-v",
+                    "[\"1.1.1.1/32\", \"2.2.2.2/32\", \"3.3.3.3/32\", \"4.4.4.4/32\"]",
+                    "-o",
+                    "subsume",
+                ],
+                pass: vec![pass.clone()],
+                fail: vec![fail],
+            }
+        },
+        {
+            let mut fail = pass.clone();
+            fail.data["spec"]["loadBalancerSourceRanges"] = json!(["5.5.5.5/32", "3.3.3.3/32"]);
+            Test {
+                name: "source array intersects target array",
+                argument: vec![
+                    "-j",
+                    "/spec/loadBalancerSourceRanges",
+                    "-d",
+                    "Service",
+                    "-v",
+                    "[\"1.1.1.1/32\", \"2.2.2.2/32\", \"4.4.4.4/32\"]",
+                    "-o",
+                    "intersect",
+                ],
+                pass: vec![pass],
+                fail: vec![fail],
             }
         },
     ]
     .into_iter()
-    .map(|t| {
-        Trial::test(t.name, {
-            let x = webhook.clone();
-            let y = client.clone();
-            let z = ns.clone();
-            let a = args.clone();
-            move || do_the_work(x.as_ref(), &a, &t, z.as_ref(), &y)
-        })
-    })
-    .collect();
-
-    let mut args = it_args.mimic_args.clone();
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            eprintln!("Interupted");
-        }
-        conclusion = tokio::task::spawn_blocking(move || {
-            args.test_threads = Some(1);
-            libtest_mimic::run(&args, tests)
-        }) => {
-            match conclusion {
-                Ok(c) => eprintln!("{c:?}"),
-                Err(e) => eprintln!("{e:?}"),
-            }
-        }
-    }
-
-    drop(x);
-    Ok(())
 }

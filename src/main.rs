@@ -64,12 +64,14 @@ async fn async_main() -> Result<()> {
         .expect("Cannot initialize AWS LC");
 
     color_eyre::install()?;
-
+    let crate_name = env!("CARGO_CRATE_NAME");
+    dbg!(crate_name);
     tracing_subscriber::registry()
         .with(
-            fmt::layer()
-                .with_span_events(FmtSpan::NONE)
-                .with_filter(EnvFilter::from_default_env()),
+            fmt::layer().with_span_events(FmtSpan::NONE).with_filter(
+                EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| EnvFilter::new(format!("info,{crate_name}=debug"))),
+            ),
         )
         .with(ErrorLayer::default())
         .try_init()?;
