@@ -1,7 +1,7 @@
 [package]
 name = "path-k8s-webhook"
 edition = "2024"
-version = "2026.9.1"
+version = "2026.10.9"
 description = "Kubernetes AdmissionControl webhook to validate or mutate specified resource via JSON Ptr"
 license = "Apache-2.0"
 repository = "https://github.com/Magicloud/path-k8s-webhook"
@@ -78,4 +78,4 @@ async-drop = { version = "0.1" }
 kube = { version = "4.2", features = ["runtime"] }
 serde_json_diff = { version = "0.2" }
 libtest-mimic = { version = "0.8" }
-async-result-ext = { version = "0.1"}
+async-result-ext = { version = "0.1" }

@@ -17,8 +17,15 @@ mod types;
 mod validation;
 mod webhook;
 
+use std::{
+    sync::LazyLock,
+    time::{Duration, Instant},
+};
+
+use arc_swap::ArcSwap;
 use clap::CommandFactory;
 use eyre::Result;
+use kube::Discovery;
 use tokio::runtime::{Builder, LocalOptions};
 use tracing::info;
 use tracing_error::ErrorLayer;
@@ -33,6 +40,15 @@ use crate::{cli::Cli, webhook::Webhook};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+static DISCOVERY_CACHE: LazyLock<ArcSwap<(Instant, Option<Discovery>)>> = LazyLock::new(|| {
+    ArcSwap::from_pointee((
+        Instant::now()
+            .checked_sub(Duration::from_hours(24))
+            .unwrap(),
+        None,
+    ))
+});
 
 fn main() -> Result<()> {
     let util_runtime = Builder::new_current_thread()

@@ -1,3 +1,8 @@
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
 use eyre::{OptionExt, Result};
 use kube::{
     Client, Discovery,
@@ -7,6 +12,8 @@ use kube::{
 use serde_json::Value;
 use tracing::info;
 use xitca_web::handler::json::Json;
+
+use crate::DISCOVERY_CACHE;
 
 pub async fn boilerplate<F>(
     name: &str,
@@ -53,16 +60,41 @@ where
 }
 
 pub async fn kind_string_to_gvk(kind: &str, client: Client) -> Result<GroupVersionKind> {
-    // run_aggregated() does not work with K3S.
-    let dis = Discovery::new(client).run().await?;
-    let gvk = dis
-        .groups()
-        .find_map(|g| {
-            g.resources_by_stability()
-                .iter()
-                .find(|(ar, _)| ar.kind.eq_ignore_ascii_case(kind))
-                .map(|(ar, _)| GroupVersionKind::gvk(g.name(), &ar.version, &ar.kind))
-        })
-        .ok_or_eyre(format!("{kind} does not exist"))?;
-    Ok(gvk)
+    let mut ts_d = DISCOVERY_CACHE.load();
+    let ts = ts_d.0;
+    if ts.elapsed() > Duration::from_hours(1) {
+        // update
+        // run_aggregated() does not work with K3S.
+        let d = Discovery::new(client.clone()).run().await?;
+        DISCOVERY_CACHE.store(Arc::new((Instant::now(), Some(d))));
+        ts_d = DISCOVERY_CACHE.load();
+    }
+    let dis = ts_d.1.as_ref().unwrap();
+
+    let gvk = dis.groups().find_map(|g| {
+        g.resources_by_stability()
+            .iter()
+            .find(|(ar, _)| ar.kind.eq_ignore_ascii_case(kind))
+            .map(|(ar, _)| GroupVersionKind::gvk(g.name(), &ar.version, &ar.kind))
+    });
+    if let Some(gvk) = gvk {
+        Ok(gvk)
+    } else {
+        // try again
+        let d = Discovery::new(client).run().await?;
+        DISCOVERY_CACHE.store(Arc::new((Instant::now(), Some(d))));
+        let ts_d = DISCOVERY_CACHE.load();
+        let dis = ts_d.1.as_ref().unwrap();
+
+        let gvk = dis
+            .groups()
+            .find_map(|g| {
+                g.resources_by_stability()
+                    .iter()
+                    .find(|(ar, _)| ar.kind.eq_ignore_ascii_case(kind))
+                    .map(|(ar, _)| GroupVersionKind::gvk(g.name(), &ar.version, &ar.kind))
+            })
+            .ok_or_eyre(format!("{kind} does not exist"))?;
+        Ok(gvk)
+    }
 }
