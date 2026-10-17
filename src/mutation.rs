@@ -1,10 +1,13 @@
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 
-use axum::{Json, extract::State};
 use eyre::{OptionExt, Result, eyre};
 use kube::{api::DynamicObject, core::admission::AdmissionReview};
 use serde_json::Value;
 use tracing::debug;
+use xitca_web::{
+    codegen::route,
+    handler::{json::Json, state::StateRef},
+};
 
 use crate::{
     helper::boilerplate,
@@ -12,11 +15,12 @@ use crate::{
     webhook::Webhook,
 };
 
+#[route("/mutate", method = post)]
 pub async fn mutate(
-    State(data): State<Arc<Webhook>>,
+    data: StateRef<'_, Arc<Webhook>>,
     Json(admission_review): Json<Value>,
-) -> Result<Json<AdmissionReview<DynamicObject>>, String> {
-    boilerplate(&data.name, admission_review, async |kind, obj, mut ar| {
+) -> Result<Json<AdmissionReview<DynamicObject>>, Box<dyn Error + Send + Sync>> {
+    let ret = boilerplate(&data.name, admission_review, async |kind, obj, mut ar| {
         let tests = data
             .matches
             .checking(kind, obj, false)
@@ -72,5 +76,6 @@ pub async fn mutate(
         ar = ar.with_patch(p)?;
         Ok(ar)
     })
-    .await
+    .await?;
+    Ok(ret)
 }

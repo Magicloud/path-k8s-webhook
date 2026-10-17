@@ -1,4 +1,4 @@
-use std::{collections::HashSet, str::FromStr, sync::Arc};
+use std::{collections::HashSet, str::FromStr, sync::Arc, vec::Vec};
 
 use clap::ArgMatches;
 use evalexpr::{Node, build_operator_tree};
@@ -6,15 +6,18 @@ use eyre::{OptionExt, Report, Result, eyre};
 use futures::future::join_all;
 use jsonptr::PointerBuf;
 use kube::{
-    Api, Client, Discovery,
-    api::{ApiResource, DynamicObject, GroupVersionKind},
+    Api, Client,
+    api::{ApiResource, DynamicObject},
 };
 use macroweave::repeat;
 use serde_json::Value;
-use tracing::{debug, warn};
+use tracing::{debug, instrument, warn};
+
+use crate::helper::kind_string_to_gvk;
 
 pub struct Matches(pub Vec<Arc<Match>>);
 impl Matches {
+    #[instrument(skip_all)]
     pub async fn checking(
         &self,
         kind: &str,
@@ -41,6 +44,7 @@ impl Matches {
 impl TryFrom<&mut ArgMatches> for Matches {
     type Error = Report;
 
+    #[instrument(skip_all)]
     fn try_from(value: &mut ArgMatches) -> Result<Self> {
         repeat!((Key, Wrapper) in [
             (json_path, TypeHelper::PointerBufS),
@@ -62,7 +66,8 @@ impl TryFrom<&mut ArgMatches> for Matches {
             })(stringify!(Key))
             .unwrap_or_default();
         });
-        let mut prepare = [
+
+        let total = [
             json_path,
             jp_kinds,
             jp_value,
@@ -73,10 +78,13 @@ impl TryFrom<&mut ArgMatches> for Matches {
             jp_value_m,
             jp_resource_m,
             jp_value_m_json_path,
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+        ];
+        let len = total.iter().map(Vec::len).sum();
+        let mut prepare = total.into_iter().fold(Vec::with_capacity(len), |mut i, x| {
+            i.extend(x);
+            i
+        });
+
         prepare.sort_by_key(|(_, i)| *i);
         eprintln!("{prepare:?}");
         let matches = prepare
@@ -103,6 +111,7 @@ pub struct Match {
     pub value_to_be: Option<MatchValue>,
 }
 impl Match {
+    #[instrument(skip_all)]
     pub async fn matching(&self, kind: &str, obj: &Value, ignore_containing: bool) -> Result<bool> {
         // `contains` requires alloc for kind, as the types are not the same.
         if !self.kinds.iter().any(|x| x == kind) {
@@ -140,37 +149,32 @@ impl Match {
                             .collect::<HashSet<&Value>>();
                         !src.is_disjoint(&dst)
                     }
-                    Contains::Contain if results.is_array() && target_values.is_array() => {
-                        let src = results
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .collect::<HashSet<&Value>>();
-                        let dst = target_values
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .collect::<HashSet<&Value>>();
-                        src.is_subset(&dst) || src.is_superset(&dst)
-                    }
                     Contains::Contain if results.is_array() => {
                         let src = results
                             .as_array()
                             .unwrap()
                             .iter()
                             .collect::<HashSet<&Value>>();
-                        src.contains(target_values)
+                        let dst = target_values.as_array().map_or_else(
+                            || HashSet::from([target_values]),
+                            |x| x.iter().collect::<HashSet<&Value>>(),
+                        );
+                        src.is_superset(&dst)
                     }
-                    Contains::Contain if target_values.is_array() => {
+                    Contains::Subsume if target_values.is_array() => {
+                        let src = results.as_array().map_or_else(
+                            || HashSet::from([results]),
+                            |x| x.iter().collect::<HashSet<&Value>>(),
+                        );
                         let dst = target_values
                             .as_array()
                             .unwrap()
                             .iter()
                             .collect::<HashSet<&Value>>();
-                        dst.contains(results)
+                        src.is_subset(&dst)
                     }
-                    Contains::Contain | Contains::Intersect => {
-                        Err(eyre!("Source and target are not both list"))?
+                    Contains::Contain | Contains::Intersect | Contains::Subsume => {
+                        Err(eyre!("Invalid value and containing option"))?
                     }
                 }
             };
@@ -214,6 +218,7 @@ impl Match {
 impl TryFrom<Vec<TypeHelper>> for Match {
     type Error = Report;
 
+    #[instrument(skip_all)]
     fn try_from(input_value: Vec<TypeHelper>) -> Result<Self> {
         let mut query = None;
         let mut kinds = vec![];
@@ -290,19 +295,10 @@ pub struct K8SResource {
     pub name: String,
 }
 impl K8SResource {
+    #[instrument(skip_all)]
     pub async fn fetch(&self) -> Result<Option<Value>> {
         let client = Client::try_default().await?;
-        // run_aggregated() does not work with K3S.
-        let dis = Discovery::new(client.clone()).run().await?;
-        let gvk = dis
-            .groups()
-            .find_map(|g| {
-                g.resources_by_stability()
-                    .iter()
-                    .find(|(ar, _)| ar.kind.eq_ignore_ascii_case(&self.kind))
-                    .map(|(ar, _)| GroupVersionKind::gvk(g.name(), &ar.version, &ar.kind))
-            })
-            .ok_or_eyre(format!("{} does not exist", self.kind))?;
+        let gvk = kind_string_to_gvk(&self.kind, client.clone()).await?;
         debug!("{gvk:?}");
         let ar = ApiResource::from_gvk(&gvk);
         let api: Api<DynamicObject> = if let Some(ref ns) = self.namespace {
@@ -321,6 +317,7 @@ impl K8SResource {
 impl FromStr for K8SResource {
     type Err = Report;
 
+    #[instrument(skip_all)]
     fn from_str(s: &str) -> Result<Self> {
         if let Some((k, nsn)) = s.split_once(':') {
             if let Some((ns, n)) = nsn.split_once('/') {
@@ -377,6 +374,7 @@ pub enum Contains {
     Equal,
     Intersect,
     Contain,
+    Subsume,
 }
 impl FromStr for Contains {
     type Err = Report;
@@ -386,6 +384,7 @@ impl FromStr for Contains {
             "" | "EQUAL" => Ok(Self::Equal),
             "CONTAIN" => Ok(Self::Contain),
             "INTERSECT" => Ok(Self::Intersect),
+            "SUBSUME" => Ok(Self::Subsume),
             _ => unimplemented!(),
         }
     }

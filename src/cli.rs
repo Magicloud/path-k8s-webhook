@@ -36,7 +36,8 @@ pub struct WebhookArguments {
     /// 2. The two sets intersect. Use `-o INTERSECT`.
     /// 3. and 4. One set includes the other. (Subsume if expressing the backward). Covered by `-o`
     ///
-    /// Additionally, `-r` can be used with `-p`, to specify a K8S resource to query for values to compare. The format of `-r` value is "Kind:Namespace/Name". And `-i` to skip validation if the resource does not exist.
+    /// Additionally, `-r` can be used with `-p`, to specify a K8S resource to query for values to compare.
+    /// The format of `-r` value is "Kind:Namespace/Name". And `-i` to skip validation if the resource does not exist.
     /// All above arguments must be used in group, each starts with `-j`.
     #[arg(short('j'), long, required = true, action = Append, value_parser = StringValueParser::new().try_map(|s| PointerBuf::parse(&s)))]
     pub json_path: Vec<PointerBuf>,
@@ -71,12 +72,9 @@ pub struct WebhookArguments {
     #[arg(short('A'), long, num_args = 0..=1, default_value = "ANY", default_missing_value = "ALL", value_parser = value_parser!(MatchCombiner))]
     pub match_combiner: Option<String>,
 
-    /// Webhook service TLS certificate file path
-    #[arg(short('c'), long)]
-    pub tls_certificate_file_name: PathBuf,
-    /// Webhook service TLS private key file path
-    #[arg(short('k'), long)]
-    pub tls_private_key_file_name: PathBuf,
+    /// Path containing webhook service TLS certificate file and private key file, cert manager style.
+    #[arg(short('t'), long)]
+    pub tls_folder: PathBuf,
     /// Name for this validator/mutater. Just for logging and messages.
     #[arg(short('n'), long)]
     pub name: String,

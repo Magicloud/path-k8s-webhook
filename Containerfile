@@ -7,12 +7,26 @@ ENV SCCACHE_DIR=/sccache
 ENV XDG_RUNTIME_DIR=/tmp/sccache-runtime
 ENV SCCACHE_SERVER_UDS=/tmp/sccache-runtime/sccache.socket
 
-RUN --mount=type=cache,target=/sccache,id=rust mkdir -p /tmp/sccache-runtime && sccache --start-server && cargo install --path . --target x86_64-unknown-linux-musl && sccache --stop-server
+ARG IS_CI=false
+
+RUN --mount=type=cache,target=/sccache,id=rust \
+    if [ "${IS_CI}" = "true" ]; then \
+        sed -i '/\[source\.crates-io\]/,/registry =/d' .cargo/config.toml && \
+        sed -i '/rustc-wrapper/d' .cargo/config.toml && \
+        cargo install --path .; \
+    else \
+        mkdir -p /tmp/sccache-runtime && \
+        sccache --start-server && \
+        cargo install --path . && \
+        sccache --stop-server; \
+    fi
 
 
-FROM alpine:latest
+# FROM alpine:latest
+FROM debian:latest
 
-RUN adduser -D worker -u 1000
+# RUN apk add --no-cache gcompat libgcc && adduser -D worker -u 1000
+RUN useradd -u 1000 worker
 USER 1000
 
 EXPOSE 443/TCP

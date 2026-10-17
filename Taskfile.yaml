@@ -32,16 +32,9 @@ tasks:
             - kustomize edit set image registry.magicloud.lan/pkw=registry.magicloud.lan/pkw@$(cat ../.task/image_sha256)
             - kubectl apply -k .
             - kubectl -ntest rollout status deployment/path-k8s-webhook --timeout=1m || kubectl -ntest logs $(kubectl -ntest get pods -l app=path-k8s-webhook -o jsonpath='{.items[?(@.status.containerStatuses[0].state.waiting.reason=="CrashLoopBackOff")].metadata.name}')
-            - date > ../.task/deploy_task
-            - sleep 60s
 
     test:
-        deps: [deploy]
-        dir: tests
-        sources:
-            - ../.task/deploy_task
-            - test.yaml
+        deps: [build]
         cmds:
-            - kubectl delete -f test.yaml || true
-            - kubectl apply -f test.yaml || true
-            - kubectl -ntest logs deployment.apps/path-k8s-webhook || true
+            # `--test="*"` is necessary. Otherwise it.rs cannot parse the parameters properly.
+            - unset https_proxy; cargo test --test="*" -- --image-sha256=$(cat .task/image_sha256) --namespace=test
