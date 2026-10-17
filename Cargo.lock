@@ -1510,7 +1510,7 @@ dependencies = [
 
 [[package]]
 name = "path-k8s-webhook"
-version = "2026.10.9"
+version = "2026.10.17"
 dependencies = [
  "arc-swap",
  "async-drop",
